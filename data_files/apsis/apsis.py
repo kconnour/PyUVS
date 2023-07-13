@@ -4,7 +4,7 @@
 import numpy as np
 import spiceypy
 
-from data_files import pyuvs as pu
+import pyuvs as pu
 
 
 def compute_maven_apsis_et(segment='apoapse', step_size: float = 60) -> np.ndarray:

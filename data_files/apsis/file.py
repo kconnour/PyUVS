@@ -3,11 +3,11 @@ import mars_time as mt
 import numpy as np
 import spiceypy
 
-import data_files.pyuvs as pu
+import pyuvs as pu
 from apsis import compute_maven_apsis_et
 
 
-file = File('/mnt/science/data_lake/mars/maven/apsis.hdf5')
+file = File('/mnt/science/data_lake/mars/maven/apsis.hdf5', mode='a')  # 'a' means to read/write if exists, create otherwise
 
 # Load in the proper kernels
 spiceypy.kclear()
@@ -17,8 +17,11 @@ pu.furnish_pck_files()
 pu.furnish_sclk_files()
 pu.furnish_spk_files()
 
+print('loaded kernels')
 
 for segment in ['apoapse', 'periapse']:
+    print(f'starting {segment}')
+
     # Make the file structure
     apsis = file.create_group(segment)
 
@@ -32,7 +35,7 @@ for segment in ['apoapse', 'periapse']:
     apsis.create_dataset('orbit', data=orbits)
 
     # Add Mars year
-    datetimes = [spiceypy.et2datetime(et)[0] for et in ephemeris_times]
+    datetimes = [spiceypy.et2datetime(et) for et in ephemeris_times]
     mars_time = [mt.datetime_to_marstime(dt) for dt in datetimes]
     mars_year = np.array([i.year for i in mars_time])
     apsis.create_dataset('mars_year', data=mars_year)
@@ -62,7 +65,7 @@ for segment in ['apoapse', 'periapse']:
 
     # Add sub-spacecraft longitude
     subsolar_longitude = np.array([pu.compute_subspacecraft_point(et)[1] for et in ephemeris_times])
-    dataset = apsis.create_dataset('subsolar_longitude', data=subsolar_longitude)
+    dataset = apsis.create_dataset('subspacecraft_longitude', data=subsolar_longitude)
     dataset.attrs['unit'] = 'Degrees [E]'
 
     # Add spacecraft altitude
