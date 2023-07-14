@@ -1,45 +1,121 @@
-"""This module contains constants and conversions factors relevant to IUVS.
+"""This module contains constants relevant to IUVS.
 """
-import datetime
-
+from datetime import datetime
 import numpy as np
 
-maven_arrival = datetime.datetime(2014, 9, 22, 2, 24)
 
-spice_start = datetime.datetime(2014, 9, 22, 3, 0)   # The datetime to start SPICE searches from
+orbit_insertion_date: datetime = datetime(2014, 9, 22, 2, 24, 0)
+"""Date of MAVEN's orbital insertion. 
 
-angular_slit_width: float = 10.64
-"""Width of the slit [degrees]."""
+Notes
+-----
+This value comes from `JPL 
+<https://www.jpl.nasa.gov/news/nasas-newest-mars-mission-spacecraft-enters-orbit-around-red-planet>`_.
+"""
 
-spatial_slit_width: float = 0.1
-"""Width of the slit [mm]."""
+spatial_slit_thickness: float = 0.1
+"""Thickness of the slit [mm].
 
-cmos_pixel_well_depth: int = 3400
-"""Saturation level of an IUVS CMOS detector pixel [DN]."""
+Notes
+-----
+This value comes from Table 3 (p. 91) of the `IUVS paper
+<https://link.springer.com/article/10.1007/s11214-014-0098-7>`_.
+"""
 
-day_night_voltage_boundary: int = 790
-"""Voltage defining the boundary between dayside and nightside settings."""
+spatial_slit_length: float = 19.8
+"""Length of the slit [mm].
+
+Notes
+-----
+This value comes from Table 3 (p. 91) of the `IUVS paper
+<https://link.springer.com/article/10.1007/s11214-014-0098-7>`_.
+"""
+
+telescope_focal_length: float = 99.5
+"""Focal length of the IUVS telescope mirror [mm].
+
+Notes
+-----
+This value comes from an email Alan Hoskins where he noted that he used this
+value in his ray tracing code. The IUVS paper simply notes this value is 
+100 mm (see Table 3, p. 91) with only 1 significant figure. 
+"""
+
+detector_length: int = 22
+"""Length of the length of the detector [mm]."""
+
+angular_detector_width: float = spatial_slit_length / telescope_focal_length * 180 / np.pi
+"""Angular width of the detector [degrees]."""
+
+angular_slit_width: float = spatial_slit_length / telescope_focal_length * 180 / np.pi
+r"""Width of the slit [degrees].
+
+Notes
+-----
+This is the angular size of the slit, which covers neither keyhole.
+The formula for creating this constant is
+
+.. math::
+
+   \theta = \frac{s}{f} * \frac{180}{\pi}
+
+where :math:`s` is the spatial slit length and :math:`f` is the telescope
+focal length.
+"""
+
+pixel_length: float = 22 / 1024
+"""Length of an IUVS detector pixel [mm].
+
+Notes
+-----
+This values is derived from figure 11 of the IUVS paper, where the pixel length
+is simply the length of the detector divided into 1024 pixels.
+"""
+
+pixel_angular_size: float = pixel_length / telescope_focal_length * \
+                            spatial_slit_thickness / telescope_focal_length
+r"""Angular size of a detector pixel [sr]. 
+
+Notes
+-----
+The formula for creating this constant is
+
+.. math::
+
+   \omega = \frac{s}{f} * \frac{l}{f}
+
+where :math:`s` is the spatial length of a pixel, :math:`f` is the telescope
+focal length, and :math:`l` is the thickness of the slit.
+"""
 
 minimum_mirror_angle: float = 30.2508544921875
-"""Minimum angle [degrees] the scan mirror can be."""
+"""Minimum angle [degrees] the scan mirror can obtain.
+
+Notes
+-----
+This value comes from Justin Deighan.
+"""
 
 maximum_mirror_angle: float = 59.6502685546875
-"""Maximum angle [degrees] the scan mirror can be."""
+"""Maximum angle [degrees] the scan mirror can obtain.
 
-telescope_focal_length: int = 100
-"""Focal length of the IUVS telescope mirror [mm]."""
+Notes
+-----
+This value comes from Justin Deighan.
+"""
 
-pixel_size: float = 24/1024
-"""Size of an IUVS detector pixel [mm]. From Fig 11, p94 of the original IUVS paper."""
+apoapse_muv_day_night_voltage_boundary: int = 790
+"""Voltage defining the boundary between dayside and nightside settings.
 
-pixel_omega: float = pixel_size / telescope_focal_length * spatial_slit_width / telescope_focal_length
-"""Detector pixel angular dispersion along the slit [sr]."""
+Notes
+-----
+This value is simply an engineering convention and has no physical basis.
+"""
 
-muv_wavelength_width: float = 0.16367098
-"""Docstring."""
+apoapse_muv_failsafe_voltage: float = 497.63803
+"""The voltage of the failsafe mode.
 
-kR: float = 10**9 / (4 * np.pi)
-"""Definition of the kilorayleigh [photons/second/m**2/steradian]."""
-
-radius_mars: float = 3.3895 * 10**6
-"""Radius of Mars [m]"""
+Notes
+-----
+This value is simply an engineering convention and has no physical basis.
+"""
