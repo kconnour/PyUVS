@@ -59,15 +59,29 @@ class Solstice(SolarFlux):
         self.dt = dt
         self._base_path = Path('/mnt/science/data_lake/sun/solstice')
         self.dataset = self._load_dataset()
+        self._irradiance = self._set_irradiance()
+        self._wavelengths = self._set_wavelengths()
 
     def _load_dataset(self):
         return Dataset(self._base_path / f'SORCE_SOLSTICE_L3_HR_V18_{self.dt.year}.nc')
 
-    def get_irradiance(self):
+    def _set_irradiance(self):
+        # NOTE: I put the logic in the constructor because I call this method a lot. Each time I call it, it reads in
+        #  the wavelengths, which is super duper slow. It may be better to ignore this method and just make a public
+        #  attribute.
         return self.dataset.variables['irradiance'][self.dt.timetuple().tm_yday - 1, :]
 
-    def get_wavelengths(self):
+    def _set_wavelengths(self):
+        # NOTE: I put the logic in the constructor because I call this method a lot. Each time I call it, it reads in
+        #  the wavelengths, which is super duper slow. It may be better to ignore this method and just make a public
+        #  attribute.
         return self.dataset.variables['standard_wavelengths'][:]
+
+    def get_irradiance(self):
+        return self._irradiance
+
+    def get_wavelengths(self):
+        return self._wavelengths
 
 
 class TSIS1(SolarFlux):
@@ -75,20 +89,34 @@ class TSIS1(SolarFlux):
         self.dt = dt
         self._base_path = Path('/mnt/science/data_lake/sun/tsis-1')
         self.dataset = self._load_dataset()
+        self._irradiance = self._set_irradiance()
+        self._wavelengths = self._set_wavelengths()
 
     def _load_dataset(self):
         return Dataset(self._base_path / f'tsis_ssi_L3_c24h_latest.nc')
 
-    def get_wavelengths(self):
-        return self.dataset['wavelength'][:]
-
-    def get_irradiance(self):
+    def _set_irradiance(self):
         # TODO: In theory I should adjust this spectrum to match what SOLSTICE would've measured. However, over the
         #  spectral range I care about, the differences are so small that it's not worth the effort right now
         jd = Time(self.dt, format='isot').jd
         times = self.dataset['time'][:]
         idx = np.abs(times - jd).argmin()
         return self.dataset['irradiance'][idx, :]
+
+    def _set_wavelengths(self):
+        return self.dataset['wavelength'][:]
+
+    def get_irradiance(self):
+        # NOTE: I put the logic in the constructor because I call this method a lot. Each time I call it, it reads in
+        #  the wavelengths, which is super duper slow. It may be better to ignore this method and just make a public
+        #  attribute.
+        return self._irradiance
+
+    def get_wavelengths(self):
+        # NOTE: I put the logic in the constructor because I call this method a lot. Each time I call it, it reads in
+        #  the wavelengths, which is super duper slow. It may be better to ignore this method and just make a public
+        #  attribute.
+        return self._wavelengths
 
 
 def make_radiance(orbit: int) -> None:
