@@ -1,3 +1,4 @@
+#!/home/kyle/repos/PyUVS/venv/bin/python
 """This script will make a l1c file for a given orbit using a reference solar spectrum.
 """
 import abc
@@ -46,8 +47,11 @@ class SolarFlux(metaclass=abc.ABCMeta):
         -------
 
         """
+        wavelengths = self.get_wavelengths()
+        kR = self.convert_flux_to_kR()
+
         def solar(wav):
-            return np.interp(wav, self.get_wavelengths(), self.convert_flux_to_kR())
+            return np.interp(wav, wavelengths, kR)
 
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
@@ -98,7 +102,7 @@ class TSIS1(SolarFlux):
     def _set_irradiance(self):
         # TODO: In theory I should adjust this spectrum to match what SOLSTICE would've measured. However, over the
         #  spectral range I care about, the differences are so small that it's not worth the effort right now
-        jd = Time(self.dt, format='isot').jd
+        jd = Time(str(self.dt), format='iso').jd
         times = self.dataset['time'][:]
         idx = np.abs(times - jd).argmin()
         return self.dataset['irradiance'][idx, :]
@@ -145,7 +149,7 @@ def make_radiance(orbit: int) -> None:
     if dt < datetime(2020, 2, 1):
         solar_flux = Solstice(dt)
     else:
-        solar_flux = TSIS1(timestamp)
+        solar_flux = TSIS1(dt)
 
     earth_sun_distance = 1.496e8  # km
     radius = earth_sun_distance / mars_sun_distance
@@ -154,6 +158,7 @@ def make_radiance(orbit: int) -> None:
     psf = np.load('/mnt/science/data_lake/mars/maven/iuvs/instrument/muv_point_spread_function.npy')
 
     for file_number in range(len(data_files)):
+        print(f'file number {file_number}')
         # Open the .fits file and read in relevant data
         hdul = fits.open(data_files[file_number])
         dds = hdul['detector_dark_subtracted'].data
@@ -190,6 +195,7 @@ def make_radiance(orbit: int) -> None:
 
         radiance = np.zeros(dds.shape)
         for spatial_bin in range(radiance.shape[1]):
+            print(f'spatial bin {spatial_bin}')
             # Compute the wavelengths on a 1024 grid (but don't take all 1024 pixels since some are in the keyholes)
             # I have to do this because of the PSF
             pixel_edges = np.arange(spectral_bin_edges[0], spectral_bin_edges[-1] + 1)
@@ -198,7 +204,6 @@ def make_radiance(orbit: int) -> None:
             # Integrate the solar flux
             integrated_flux = np.array([solar_flux.integrate_flux(pixel_edge_wavelengths[i], pixel_edge_wavelengths[i+1]) for i in range(len(pixel_edge_wavelengths)-1)])
             integrated_flux *= radius ** 2
-
             # Convolve the flux by the PSF and rebin to IUVS resolution
             convolved_flux = np.convolve(integrated_flux, psf, mode='same')
             edge_indices = spectral_bin_edges - spectral_bin_edges[0]
@@ -215,11 +220,11 @@ def make_radiance(orbit: int) -> None:
 
 
 if __name__ == '__main__':
-    #n_cpus = mp.cpu_count()  # = 8 for my old desktop, 12 for my laptop, 20 for my new desktop
-    #pool = mp.Pool(n_cpus - 2)  # save one/two just to be safe. Some say it's faster
-    for orb in range(3453, 3454):
+    n_cpus = mp.cpu_count()  # = 8 for my old desktop, 12 for my laptop, 20 for my new desktop
+    pool = mp.Pool(n_cpus - 2)  # save one/two just to be safe. Some say it's faster
+    for orb in range(10837, 17000):
         # NOTE: if there are any issues in the argument of apply_async, it'll break out of that and move on to the next iteration.
-        make_radiance(3453)
-        #pool.apply_async(make_radiance, args=(orb,))
-    #pool.close()
-    #pool.join()
+        #make_radiance(orb)
+        pool.apply_async(make_radiance, args=(orb,))
+    pool.close()
+    pool.join()

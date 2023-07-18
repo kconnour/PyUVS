@@ -44,13 +44,13 @@ def _make_gain_correction(dark_subtracted, spatial_bin_width, spectral_bin_width
         ab = np.load('/mnt/science/data_lake/mars/maven/iuvs/instrument/voltage_fit_coefficients.npy')
         ref_mcp_gain = 50.909455
 
-        normalized_img = dark_subtracted.T / integration_time / spatial_bin_width / spectral_bin_width
+        normalized_img = dark_subtracted / integration_time / spatial_bin_width / spectral_bin_width
 
         a = np.interp(mcp_volt, volt_array, ab[:, 0])
         b = np.interp(mcp_volt, volt_array, ab[:, 1])
 
         norm_img = np.exp(a + b * np.log(normalized_img))
-        return (norm_img / normalized_img * mcp_gain / ref_mcp_gain).T
+        return norm_img / normalized_img * mcp_gain / ref_mcp_gain
 
 
 def make_brightness(dark_subtracted: np.ndarray, spatial_bin_edges: np.ndarray, spectral_bin_edges: np.ndarray,
@@ -80,18 +80,17 @@ def make_brightness(dark_subtracted: np.ndarray, spatial_bin_edges: np.ndarray, 
             flatfield = _make_muv_flatfield(spatial_bin_edges, spectral_bin_edges)
 
             # The sensitivity curve is currently 512 elements. Make it (1024,) for simplicity
-            sensitivity_curve = np.load('/mnt/science/data_lake/mars/maven/iuvs/instrument/muv_sensitivity_curve_manufacturer.npy')[1]
+            sensitivity_curve = np.load('/mnt/science/data_lake/mars/maven/iuvs/instrument/muv_sensitivity_curve_observational.npy')[1]
             sensitivity_curve = np.repeat(sensitivity_curve, 2)
 
             # Get the sensitivity in each spectral bin
             # For array shape reasons, I spread this out over several lines
             rebinned_sensitivity_curve = np.array([np.mean(sensitivity_curve[spectral_bin_edges[i]:spectral_bin_edges[i + 1]]) for i in range(spectral_bin_edges.shape[0] - 1)])
-            partial_corrected_brightness = dark_subtracted / rebinned_sensitivity_curve * 4 * np.pi * 10 ** -9 / pu.pixel_angular_size / spatial_bin_width
-            partial_corrected_brightness = (partial_corrected_brightness.T / mcp_voltage_gain / integration_time).T
+            partial_corrected_brightness = dark_subtracted / rebinned_sensitivity_curve * 4 * np.pi * 10 ** -9 / pu.pixel_angular_size / spatial_bin_width / mcp_voltage_gain / integration_time
 
             # Finally, do the voltage gain and flatfield corrections
             voltage_correction = _make_gain_correction(dark_subtracted, spatial_bin_width, spectral_bin_width, integration_time, mcp_voltage, mcp_voltage_gain)
-            data = partial_corrected_brightness / flatfield * voltage_correction
+            data = partial_corrected_brightness * voltage_correction / flatfield
 
             # If the data have negative DNs, then they become NaNs during the voltage correction
             data[np.isnan(data)] = 0

@@ -24,33 +24,155 @@ import mars_time
 class Ames:
     def __init__(self):
         self._base_path = Path('/mnt/science/data_lake/mars/gcm/ames/my_generic')
-        self._average_path = self._base_path / '05344.atmos_average.nc'
-        self._fixed_path = self._base_path / '05344.fixed.nc'
 
-        self._fixed = Dataset(self._fixed_path)
-        self._average = Dataset(self._average_path)
+        self._fixed = Dataset(self._base_path / '05344.fixed.nc')
+        self._average = Dataset(self._base_path / '05344.atmos_average.nc')
+        self._diurnal = Dataset(self._base_path / '05344.atmos_diurn.nc')
 
-        gcm_lat = grid.variables['lat'][:]
-        gcm_lon = grid.variables['lon'][:]
+        self.latitude = self._fixed.variables['lat'][:]
+        self.longitude = self._fixed.variables['lon'][:]
 
-        gcm_dust_vprof = yearly_gcm.variables['dustref']  # shape: (year, pressure level, lat, lon)
-        gcm_ice_vprof = yearly_gcm.variables['cldref']  # shape: (year, pressure level, lat, lon)
+        self.dust_vprof = self._average.variables['dustref']  # shape: (year, pressure level, lat, lon)
+        #self.ice_vprof = self._average.variables['cldref']  # shape: (year, pressure level, lat, lon)
 
-        gcm_pressure_levels = gcm.variables['pstd']  # shape: (pressure level,). Index 0 is TOA
-        gcm_surface_pressure = gcm.variables['ps']  # shape: (season, time of day, lat, lon)
-        gcm_surface_temperature = gcm.variables['ts']  # shape: (season, time of day, lat, lon)
-        gcm_temperature = gcm.variables['temp']  # shape: (season, time of day, pressure level, lat, lon)
-        gcm_season = gcm.variables['time'][:]  # idk why the times start from 10,000
-        gcm_local_time = gcm.variables['time_of_day_24'][:]
+        self.pressure_levels = self._average.variables['pstd']  # shape: (pressure level,). Index 0 is TOA
+        self.surface_pressure = self._average.variables['ps']  # shape: (season, time of day, lat, lon)
+        self.surface_temperature = self._average.variables['ts']  # shape: (season, time of day, lat, lon)
+        self.temperature = self._average.variables['temp'][:]  # shape: (season, time of day, pressure level, lat, lon)
+        self.season = self._average.variables['time'][:]  # idk why the times start from 10,000
+        self.local_time = self._diurnal.variables['time_of_day_24'][:]
 
-        season_idx = np.argmin(np.abs(gcm_season - 10000 - sol))
-        yearly_idx = np.argmin(np.abs(yearly_gcm.variables['time'][:] - 10000 - sol))
+        self.ak = self._fixed.variables['ak'][:]
+        self.bk = self._fixed.variables['bk'][:]
+
+    def get_seasonal_index(self, sol):
+        return np.argmin(np.abs(self.season - 10000 - sol))
+
+    def get_latitude_index(self, lat: float):
+        return np.argmin(np.abs(self.latitude - lat))
+
+    def get_longitude_index(self, lon: float):
+        return np.argmin(np.abs(self.longitude - lon))
+
+    def get_local_time_index(self, lon: float, lt):
+        return np.argmin(np.abs(self.local_time - (lt - (lon / 360 * 24)) % 24))
+
+    def make_pressure(self):
+        return np.multiply.outer(self.surface_pressure, self.bk) + self.ak   # shape: (season, lat, lon, altitude)
+
+    def get_pixel_pressure(self, lat, lon, sol):
+        # Make the pressure and temperature vertical profiles from the surface
+        lat_idx = self.get_latitude_index(lat)
+        lon_idx = self.get_longitude_index(lon)
+        season_idx = self.get_seasonal_index(sol)
+        return self.make_pressure()[season_idx, lat_idx, lon_idx]
+
+    def get_pixel_temperature(self, lat, lon, sol):
+        lat_idx = self.get_latitude_index(lat)
+        lon_idx = self.get_longitude_index(lon)
+        season_idx = self.get_seasonal_index(sol)
+
+        surface_temperature = self.temperature[season_idx, lat_idx, lon_idx]
+
+        # Get where the surface index would be
+        surface_idx = np.argmin(~self.temperature.mask)
+
+        return np.insert(self.temperature[season_idx, :, lat_idx, lon_idx], surface_idx, surface_temperature)
 
 
 class Radprop:
     def __init__(self):
         self._base_path = Path('/mnt/science/data_lake/mars/radiative_properties')
+        self.hdul = None
 
+    def _get_file_forward_scattering_properties(self) -> np.ndarray:
+        return self.hdul['forw'].data
+
+    def _get_file_legendre_coefficients(self) -> np.ndarray:
+        return self.hdul['pmom'].data
+
+    def _get_file_phase_function(self) -> np.ndarray:
+        return self.hdul['phsfn'].data
+
+    def _get_file_phase_function_reexpansion(self) -> np.ndarray:
+        return self.hdul['expansion'].data
+
+    def get_primary(self) -> np.ndarray:
+        """Get the primary hdul.
+
+        Returns
+        -------
+        The primary structure
+
+        Notes
+        -----
+        This array should contain no relevant info.
+
+        """
+        return self.hdul['primary'].data
+
+    def get_particle_sizes(self) -> np.ndarray:
+        """Get the particle sizes associated with each of the radiative properties.
+
+        Returns
+        -------
+        The particle sizes
+
+        Notes
+        -----
+        The particle sizes are the centers of some particle size distribution.
+
+        """
+        return self.hdul['particle_sizes'].data
+
+    def get_wavelengths(self) -> np.ndarray:
+        return self.hdul['wavelengths'].data
+
+    def get_scattering_angles(self) -> np.ndarray:
+        return self.hdul['scattering_angle'].data
+
+    def get_scattering_cross_sections(self) -> np.ndarray:
+        return self._get_file_forward_scattering_properties()[..., 1]
+
+    def get_extinction_cross_sections(self) -> np.ndarray:
+        return self._get_file_forward_scattering_properties()[..., 0]
+
+    def get_asymmetry_parameters(self) -> np.ndarray:
+        return self._get_file_forward_scattering_properties()[..., 2]
+
+    def get_phase_functions(self) -> np.ndarray:
+        return np.moveaxis(self._get_file_phase_function(), 0, -1)
+
+    def get_legendre_coefficients(self) -> np.ndarray:
+        return np.moveaxis(self._get_file_legendre_coefficients(), 0, -1)
+
+    def get_phase_function_reexpansions(self) -> np.ndarray:
+        return np.moveaxis(self._get_file_phase_function_reexpansion(), 0, -1)
+
+    def _get_header(self) -> fits.header.Header:
+        return self.hdul['primary'].header
+
+    def get_file_creation_date(self) -> str:
+        header = self._get_header()
+        return header['date']
+
+    def get_history(self) -> str:
+        header = self._get_header()
+        history = str(header['history'])
+        # The ??? currently only applies to the dust file
+        return history.replace('???', '--')
+
+
+class Dust(Radprop):
+    def __init__(self):
+        super().__init__()
+        self.hdul = fits.open(self._base_path / 'dust.fits.gz')
+
+
+class Ice(Radprop):
+    def __init__(self):
+        super().__init__()
+        self.hdul = fits.open(self._base_path / 'ice.fits.gz')
 
 
 def perform_retrieval(orbit: int):
@@ -72,48 +194,105 @@ def perform_retrieval(orbit: int):
     apsis_file = File('/mnt/science/data_lake/mars/maven/apsis.hdf5')
     sol = apsis_file['apoapse/sol'][orbit]
 
-    ##############
-    # Ames GCM
-    ##############
-    # Read in the Ames GCM
-    grid = Dataset('/media/kyle/McDataFace/ames/sim1/10000.fixed.nc')
-    gcm = Dataset('/media/kyle/McDataFace/ames/sim1/c48_big.atmos_diurn_plev-002.nc')
-    yearly_gcm = Dataset('/media/kyle/McDataFace/ames/sim1/c48_big.atmos_average_plev-001.nc')
-    # print(gcm.variables)
+    # GCM
+    gcm = Ames()
 
-    gcm_lat = grid.variables['lat'][:]
-    gcm_lon = grid.variables['lon'][:]
+    # Read in radprop
+    dust_radprop = Dust()
+    ice_radprop = Ice()
 
-    gcm_dust_vprof = yearly_gcm.variables['dustref']  # shape: (year, pressure level, lat, lon)
-    gcm_ice_vprof = yearly_gcm.variables['cldref']  # shape: (year, pressure level, lat, lon)
+    # Surface stuff
+    n_streams = 8
+    n_polar = 1  # defined by IUVS' viewing geometry
+    n_azimuth = 1  # defined by IUVS' viewing geometry
+    bemst = np.zeros(int(0.5 * n_streams))
+    emust = np.zeros(n_polar)
+    rho_accurate = np.zeros((n_polar, n_azimuth))
+    rhoq = np.zeros((int(0.5 * n_streams), int(0.5 * n_streams + 1), n_streams))
+    rhou = np.zeros((n_polar, int(0.5 * n_streams + 1), n_streams))
 
-    gcm_pressure_levels = gcm.variables['pstd']  # shape: (pressure level,). Index 0 is TOA
-    gcm_surface_pressure = gcm.variables['ps']  # shape: (season, time of day, lat, lon)
-    gcm_surface_temperature = gcm.variables['ts']  # shape: (season, time of day, lat, lon)
-    gcm_temperature = gcm.variables['temp']  # shape: (season, time of day, pressure level, lat, lon)
-    gcm_season = gcm.variables['time'][:]  # idk why the times start from 10,000
-    gcm_local_time = gcm.variables['time_of_day_24'][:]
+    def process_file(fileno: int):
+        hdul = fits.open(l1b_files[fileno])
+        wavelengths = readsav(wavelength_files[fileno])['wavelength_muv'] / 1000  # convert to microns
 
-    season_idx = np.argmin(np.abs(gcm_season - 10000 - sol))
-    yearly_idx = np.argmin(np.abs(yearly_gcm.variables['time'][:] - 10000 - sol))
+        # Get the data from the l1b file
+        pixelgeometry = hdul['pixelgeometry'].data
+        latitude = pixelgeometry['pixel_corner_lat']
+        longitude = pixelgeometry['pixel_corner_lon']
+        local_time = pixelgeometry['pixel_local_time']
+        solar_zenith_angle = pixelgeometry['pixel_solar_zenith_angle']
+        emission_angle = pixelgeometry['pixel_emission_angle']
+        phase_angle = pixelgeometry['pixel_phase_angle']
+        data_ls = hdul['observation'].data['solar_longitude']
+        tangent_altitude = pixelgeometry['pixel_mrh_alt'][..., 4]
 
-    ##############
-    # Aerosol radprop
-    ##############
-    # Dust
-    dust_cext = np.load('/home/kyle/repos/iuvs-ice/radprop/mars_dust/extinction_cross_section.npy')  # (24, 317)
-    dust_csca = np.load('/home/kyle/repos/iuvs-ice/radprop/mars_dust/scattering_cross_section.npy')  # (24, 317)
-    dust_pmom = np.load('/home/kyle/repos/iuvs-ice/radprop/mars_dust/legendre_coefficients.npy')  # (129, 24, 317)
-    dust_wavelengths = np.load('/home/kyle/repos/iuvs-ice/radprop/mars_dust/wavelengths.npy')
-    dust_particle_sizes = np.load('/home/kyle/repos/iuvs-ice/radprop/mars_dust/particle_sizes.npy')
+        # Make the azimuth angles
+        azimuth = pyrt.azimuth(solar_zenith_angle, emission_angle, phase_angle)
 
-    # Ice
-    ice_cext = np.load('/home/kyle/repos/iuvs-ice/radprop/mars_ice/extinction_cross_section.npy')  # (24, 317)
-    ice_csca = np.load('/home/kyle/repos/iuvs-ice/radprop/mars_ice/scattering_cross_section.npy')  # (24, 317)
-    ice_pmom = np.load('/home/kyle/repos/iuvs-ice/radprop/mars_ice/legendre_coefficients.npy')  # (96,)   # For 3 micron particles at 321 nm
-    ice_g = np.load('/home/kyle/repos/iuvs-ice/radprop/mars_ice/asymmetry_parameter.npy')
-    ice_wavelengths = np.load('/home/kyle/repos/iuvs-ice/radprop/mars_ice/wavelengths.npy')
-    ice_particle_sizes = np.load('/home/kyle/repos/iuvs-ice/radprop/mars_ice/particle_sizes.npy')
+        mu0 = np.cos(np.radians(solar_zenith_angle))
+        mu = np.cos(np.radians(emission_angle))
+
+        global retrieval  # this makes the function global so multiprocessing can pickle it. Very strange...
+        def retrieval(integration: int, spatial_bin: int):
+            # Exit if the pixel is not retrievable
+            if solar_zenith_angle[integration, spatial_bin] >= 72 or \
+                    emission_angle[integration, spatial_bin] >= 72 or \
+                    tangent_altitude[integration, spatial_bin] != 0:
+                answer = np.zeros((2,)) * np.nan
+                return integration, spatial_bin, answer, np.nan, np.zeros(6, ) * np.nan
+
+            pixel_wavs = wavelengths[spatial_bin, :]
+
+            ##############
+            # Equation of state
+            ##############
+            # Get the nearest neighbor values of the lat/lon/lt values (for speed I'm not using linear interpolation)
+            pixel_lat = latitude[integration, spatial_bin, 4]
+            pixel_lon = longitude[integration, spatial_bin, 4]
+            pixel_lt = local_time[integration, spatial_bin]
+
+
+
+
+
+            # Get the average altitude of an IUVS pixel (this is hackish, cause I just average the corners and center)
+
+
+            # Make the altitudes assuming exponentially decreasing pressure and constant scale height
+            z = -np.log(pixel_pressure / sfc_pressure) * 10
+
+            # Finally, use these to compute the column density in each "good" layer
+            colden = column_density(linear_grid_profile, linear_grid_profile, z[:surface_idx + 1],
+                                    (z[:surface_idx + 1], pixel_pressure[:surface_idx + 1]),
+                                    (z[:surface_idx + 1], pixel_temperature[:surface_idx + 1])) * pressure_scale_factor
+
+            ##############
+            # Rayleigh scattering
+            ##############
+            rayleigh_scattering_optical_depth = pyrt.rayleigh_co2_optical_depth(colden, pixel_wavs)
+            rayleigh_ssa = np.ones(rayleigh_scattering_optical_depth.shape)
+            rayleigh_pmom = pyrt.rayleigh_legendre(rayleigh_scattering_optical_depth.shape[0], pixel_wavs.shape[0])
+
+            # print(np.sum(rayleigh_scattering_optical_depth, axis=0))
+            # print(sfc_pressure)
+            # raise SystemExit(9)
+
+            rayleigh_column = pyrt.Column(rayleigh_scattering_optical_depth, rayleigh_ssa, rayleigh_pmom)
+
+            ##############
+            # Aerosol vertical profiles
+            ##############
+            # Get the GCM profiles and normalize them
+            # I need to account for differences between the GCMs!!!
+            # Since pressure is the vertical coordinate, they arrays may not have the same lengths!!!!!
+            # So, set the bad values to the last good value
+            dust_vprof = gcm_dust_vprof[yearly_idx, :surface_idx, lat_idx, lon_idx]
+            dust_vprof[dust_vprof.mask] = dust_vprof[np.argmin(~dust_vprof.mask) - 1]
+            dust_vprof = dust_vprof / np.sum(dust_vprof)
+
+            ice_vprof = gcm_ice_vprof[yearly_idx, :surface_idx, lat_idx, lon_idx]
+            ice_vprof[ice_vprof.mask] = ice_vprof[np.argmin(~ice_vprof.mask) - 1]
+            ice_vprof = ice_vprof / np.sum(ice_vprof)
 
 
 if __name__ == '__main__':
@@ -134,7 +313,7 @@ if __name__ == '__main__':
 
 
 
-if __name__ == '__main__':
+"""if __name__ == '__main__':
     t0 = time.time()
     # Load in all the info from the given file
     orbit: int = 3753
@@ -269,20 +448,6 @@ if __name__ == '__main__':
         mu = np.cos(np.radians(emission_angle))
 
         def column_density(pressure_profile, temperature_profile, altitude, profargs, tempargs):
-            """Make the column density.
-
-            Parameters
-            ----------
-            pressure_profile
-            temperature_profile
-            altitude
-            profargs
-            tempargs
-
-            Returns
-            -------
-
-            """
             def hydrostatic_profile(alts):
                 return pressure_profile(alts, *profargs) / temperature_profile(alts, *tempargs) / Boltzmann
 
@@ -290,32 +455,6 @@ if __name__ == '__main__':
             return np.array(n) * 1000
 
         def linear_grid_profile(altitude, altitude_grid, profile_grid) -> np.ndarray:
-            """Make a profile with linear interpolation between grid points.
-
-            Parameters
-            ----------
-            altitude: ArrayLike
-                The altitudes at which to make the vertical profile. Must be
-                1-dimensional and monotonically decreasing.
-            altitude_grid: ArrayLike
-                The altitudes where ``profile_grid`` is defined. Must be 1-dimensional
-                and monotonically decreasing.
-            profile_grid: ArrayLike
-                The profile at each point in ``altitude_grid``.
-
-            Returns
-            -------
-            np.ndarray
-                1-dimensional array of the profile with shape ``altitude.shape``.
-
-            Raises
-            ------
-            TypeError
-                Raised if any of the inputs cannot be cast to ndarrays.
-            ValueError
-                Raised if any of the inputs do not have the aforementioned desired
-                properties.
-            """
             # NOTE: numpy needs linearly increasing arrays, which is opposite of the altitude convention! They don't warn about this
             return np.interp(np.flip(altitude), np.flip(altitude_grid), np.flip(profile_grid))
 
@@ -645,4 +784,4 @@ if __name__ == '__main__':
         print(f'starting file {file}')
         process_file(file)
 
-    print(time.time() - t0)
+    print(time.time() - t0)"""
