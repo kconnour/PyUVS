@@ -30,18 +30,25 @@ class Ames:
         self.dust_vprof = self._average.variables['dustref']  # shape: (year, pressure level, lat, lon)
         #self.ice_vprof = self._average.variables['cldref']  # shape: (year, pressure level, lat, lon)
 
-        self.pressure_levels = self._average.variables['pstd']  # shape: (pressure level,). Index 0 is TOA
+        #self.pressure_levels = self._average.variables['pstd']  # shape: (pressure level,). Index 0 is TOA
         self.surface_pressure = self._average.variables['ps']  # shape: (season, time of day, lat, lon)
         self.surface_temperature = self._average.variables['ts']  # shape: (season, time of day, lat, lon)
         self.temperature = self._average.variables['temp'][:]  # shape: (season, time of day, pressure level, lat, lon)
-        self.season = self._average.variables['time'][:]  # idk why the times start from 10,000
+        self.season = self._make_season()
         self.local_time = self._diurnal.variables['time_of_day_24'][:]
 
         self.ak = self._fixed.variables['ak'][:]
         self.bk = self._fixed.variables['bk'][:]
 
+    def _make_season(self):
+        time = self._average.variables['time'][:]
+        delta = time[1] - time[0]
+        time -= delta / 2
+        time -= time[0]
+        return time
+
     def get_seasonal_index(self, sol):
-        return np.argmin(np.abs(self.season - 10000 - sol))
+        return np.argmin(np.abs(self.season - sol))
 
     def get_latitude_index(self, lat: float):
         return np.argmin(np.abs(self.latitude - lat))
@@ -60,21 +67,23 @@ class Ames:
         lat_idx = self.get_latitude_index(lat)
         lon_idx = self.get_longitude_index(lon)
         season_idx = self.get_seasonal_index(sol)
-        return self.make_pressure()[season_idx, lat_idx, lon_idx]
+        
+        surface_pressure = self.surface_pressure[season_idx, lat_idx, lon_idx]
+        return np.multiply.outer(surface_pressure, self.bk) + self.ak    # This is a huge performance improvement by not computing all the atmospheric pressures
 
     def get_pixel_temperature(self, lat, lon, sol):
         lat_idx = self.get_latitude_index(lat)
         lon_idx = self.get_longitude_index(lon)
         season_idx = self.get_seasonal_index(sol)
 
-        surface_temperature = self.temperature[season_idx, lat_idx, lon_idx]
+        surface_temperature = self.surface_temperature[season_idx, lat_idx, lon_idx]
 
         # Get where the surface index would be
         surface_idx = np.argmin(~self.temperature.mask)
 
         return np.insert(self.temperature[season_idx, :, lat_idx, lon_idx], surface_idx, surface_temperature)
 
-    def get_pixel_altitude(self, lat, lon, sol):
+    def get_pixel_boundary_altitude(self, lat, lon, sol):
         pressure = self.get_pixel_pressure(lat, lon, sol)
         return -np.log(pressure / pressure[-1]) * 10
 
@@ -150,7 +159,7 @@ class Radprop:
         return np.moveaxis(self._get_file_phase_function(), 0, -1)
 
     def get_legendre_coefficients(self) -> np.ndarray:
-        return np.moveaxis(self._get_file_legendre_coefficients(), 0, -1)
+        return self._get_file_legendre_coefficients()   # This is stupid but it needs a quick fix
 
     def get_phase_function_reexpansions(self) -> np.ndarray:
         return np.moveaxis(self._get_file_phase_function_reexpansion(), 0, -1)
@@ -212,6 +221,7 @@ def perform_retrieval(orbit: int):
     n_azimuth = 1  # defined by IUVS' viewing geometry
 
     def process_file(fileno: int):
+        print('start processing')
         hdul = fits.open(l1b_files[fileno])
         wavelengths = readsav(wavelength_files[fileno])['wavelength_muv'] / 1000  # convert to microns
         radiance = np.load(radiance_files[fileno])
@@ -224,7 +234,7 @@ def perform_retrieval(orbit: int):
         solar_zenith_angle = pixelgeometry['pixel_solar_zenith_angle']
         emission_angle = pixelgeometry['pixel_emission_angle']
         phase_angle = pixelgeometry['pixel_phase_angle']
-        tangent_altitude = pixelgeometry['pixel_mrh_alt'][..., 4]
+        tangent_altitude = pixelgeometry['pixel_corner_mrh_alt'][..., 4]
 
         # Make the azimuth angles
         azimuth = pyrt.azimuth(solar_zenith_angle, emission_angle, phase_angle)
@@ -232,14 +242,10 @@ def perform_retrieval(orbit: int):
         mu0 = np.cos(np.radians(solar_zenith_angle))
         mu = np.cos(np.radians(emission_angle))
 
-        # Make the surface
-        clancy_albedo = np.linspace(0.015, 0.1, num=100)
-        clancy_wavelengths = np.linspace(0.2, 0.3, num=100)
-        albedo = np.interp(wavelengths, clancy_wavelengths, clancy_albedo)
-
         global retrieval  # this makes the function global so multiprocessing can pickle it. Very strange...
 
         def retrieval(integration: int, spatial_bin: int):
+            print('start retrieval')
             # Exit if the pixel is not retrievable
             if solar_zenith_angle[integration, spatial_bin] >= 72 or \
                     emission_angle[integration, spatial_bin] >= 72 or \
@@ -249,17 +255,22 @@ def perform_retrieval(orbit: int):
 
             pixel_wavs = wavelengths[spatial_bin, :]
 
+            # Make the surface
+            clancy_albedo = np.linspace(0.015, 0.1, num=100)
+            clancy_wavelengths = np.linspace(0.2, 0.3, num=100)
+            albedo = np.interp(pixel_wavs, clancy_wavelengths, clancy_albedo)
+
             ##############
             # Equation of state
             ##############
             # Get the nearest neighbor values of the lat/lon/lt values (for speed I'm not using linear interpolation)
             pixel_lat = latitude[integration, spatial_bin, 4]
             pixel_lon = longitude[integration, spatial_bin, 4]
-
+            
             pixel_temperature = gcm.get_pixel_temperature(pixel_lat, pixel_lon, sol)
             pixel_pressure = gcm.get_pixel_pressure(pixel_lat, pixel_lon, sol)
-            z = gcm.get_pixel_altitude(pixel_lat, pixel_lon, sol)
-
+            z = gcm.get_pixel_boundary_altitude(pixel_lat, pixel_lon, sol)
+            altitude_midpoint = (z[:-1] + z[1:]) / 2   # I think this is only used for the ice vprof
             # Finally, use these to compute the column density in each "good" layer
             colden = pyrt.column_density(pixel_pressure, pixel_temperature, z)
 
@@ -277,7 +288,7 @@ def perform_retrieval(orbit: int):
             # The simulation doesn't have clouds, so I need to make a vertical profile. I decided to make all clouds
             #  a uniform layer 25 to 50 km above the surface defined by 610 Pa.
             sfc_z = 10 * np.log(610 / pixel_pressure[-1])
-            new_z = z + sfc_z
+            new_z = altitude_midpoint + sfc_z
             ice_vprof = np.logical_and(25 <= new_z, new_z <= 50)
             ice_vprof = ice_vprof / np.sum(ice_vprof)
 
@@ -289,14 +300,14 @@ def perform_retrieval(orbit: int):
             emust = np.zeros(n_polar)
             rho_accurate = np.zeros((n_polar, n_azimuth))
             rhoq = np.zeros((int(0.5 * n_streams), int(0.5 * n_streams + 1), n_streams))
-            rhou = np.zeros((n_polar, int(0.5 * n_streams + 1), n_streams))
+            rhou = np.zeros((n_streams, int(0.5 * n_streams + 1), n_streams))
 
             # Choose a consistent set of wavelengths for all retrievals
-            if len(wavelengths) == 20:
+            if len(pixel_wavs) == 20:
                 wavelength_indices = [1, 2, 3, -8, -7, -6]
-            elif len(wavelengths) == 19:
+            elif len(pixel_wavs) == 19:
                 wavelength_indices = [1, 2, 3, -7, -6, -5]
-            elif len(wavelengths) == 15:
+            elif len(pixel_wavs) == 15:
                 wavelength_indices = [1, 2, 3, -3, -2, -1]
 
             def simulate_tau(guess: np.ndarray) -> np.ndarray:
@@ -304,19 +315,19 @@ def perform_retrieval(orbit: int):
                 dust_guess = guess[0]
                 ice_guess = guess[1]
 
-                simulated_toa_reflectance = np.zeros(len(wavelength_indices))
+                simulated_toa_radiance = np.zeros((len(wavelength_indices),))
 
                 # This is a hack to add bounds to the solver
                 if np.any(guess < 0):
-                    simulated_toa_reflectance[:] = 999999
-                    return simulated_toa_reflectance
+                    simulated_toa_radiance[:] = 999999
+                    return simulated_toa_radiance
 
                 for counter, wav_index in enumerate(wavelength_indices):
                     ##############
                     # Dust FSP
                     ##############
                     # Get the dust optical depth at 250 nm
-                    dust_z_grad = np.linspace(1, 1.5, num=len(z))
+                    dust_z_grad = np.linspace(1, 1.5, num=len(z)-1)
                     ext = pyrt.extinction_ratio(dust_radprop.get_extinction_cross_sections(), dust_radprop.get_particle_sizes(), dust_radprop.get_wavelengths(), 0.25)
                     ext = pyrt.regrid(ext, dust_radprop.get_particle_sizes(), dust_radprop.get_wavelengths(), dust_z_grad, pixel_wavs)
                     dust_optical_depth = pyrt.optical_depth(dust_vprof, colden, ext, dust_guess)
@@ -331,7 +342,7 @@ def perform_retrieval(orbit: int):
                     # Ice FSP
                     ##############
                     # Get the ice optical depth at 250 nm
-                    ice_z_grad = np.linspace(5, 5, num=len(z))
+                    ice_z_grad = np.linspace(5, 5, num=len(z)-1)
                     ext = pyrt.extinction_ratio(ice_radprop.get_extinction_cross_sections(), ice_radprop.get_particle_sizes(), ice_radprop.get_wavelengths(), 0.25)
                     ext = pyrt.regrid(ext, ice_radprop.get_particle_sizes(), ice_radprop.get_wavelengths(), ice_z_grad, pixel_wavs)
                     ice_optical_depth = pyrt.optical_depth(ice_vprof, colden, ext, ice_guess)
@@ -369,7 +380,6 @@ def perform_retrieval(orbit: int):
                     # Call DISORT
                     ##############
                     lamber = True
-
                     # The 2nd option of the 2nd line is LAMBER
                     rfldir, rfldn, flup, dfdt, uavg, uu, albmed, trnmed = \
                         disort.disort(True, False, False, False, [False, False, False, False, False],
@@ -381,12 +391,14 @@ def perform_retrieval(orbit: int):
                                       mu0[integration, spatial_bin], 0,
                                       mu[integration, spatial_bin], azimuth[integration, spatial_bin],
                                       np.pi, 0, albedo[wav_index], 0, 0, 1, 3400000, h_lyr,
-                                      rhoq[wav_index], rhou[wav_index], rho_accurate[wav_index], bemst[wav_index], emust[wav_index],
+                                      rhoq, rhou, rho_accurate, bemst, emust,
                                       0, '', direct_beam_flux,
                                       diffuse_down_flux, diffuse_up_flux, flux_divergence,
                                       mean_intensity, intensity, albedo_medium,
-                                      transmissivity_medium, maxcmu=n_streams, maxulv=n_user_levels, maxmom=128)
-                    simulated_toa_reflectance[counter] = uu[0, 0, 0]
+                                      transmissivity_medium, maxcmu=n_streams, maxulv=n_user_levels, maxmom=159)
+                    simulated_toa_radiance[counter] = uu[0, 0, 0]
+                    return simulated_toa_radiance
+
 
             def find_best_fit(guess: np.ndarray):
                 simulated_toa_reflectance = simulate_tau(guess)
@@ -417,6 +429,7 @@ def perform_retrieval(orbit: int):
             print(t1 - t0)
             print(pixel_lat, pixel_lon)
             raise SystemExit(9)'''
+            print(f'The best fit OD was {best_fit_od}')
             return integration, spatial_bin, best_fit_od, error, sim
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -453,6 +466,7 @@ def perform_retrieval(orbit: int):
 
         for integ in range(radiance.shape[0]):
             for posit in range(radiance.shape[1]):
+                #retrieval(integ, posit)
                 pool.apply_async(func=retrieval, args=(integ, posit), callback=make_answer)
                 # print(f'starting integ {integ} and posti {posit}')
                 # retrieval(integ, posit)
@@ -461,10 +475,10 @@ def perform_retrieval(orbit: int):
         pool.close()
         pool.join()  # I guess this postpones further code execution until the queue is finished
         fileno = f'{file}'.zfill(2)
-        np.save(f'/home/kyle/iuvs/retrievals/{orbit_block}/data/{orbit_code}-{fileno}-dust.npy', retrieved_dust)
-        np.save(f'/home/kyle/iuvs/retrievals/{orbit_block}/data/{orbit_code}-{fileno}-ice.npy', retrieved_ice)
-        np.save(f'/home/kyle/iuvs/retrievals/{orbit_block}/data/{orbit_code}-{fileno}-error.npy', retrieved_error)
-        np.save(f'/home/kyle/iuvs/retrievals/{orbit_block}/data/{orbit_code}-{fileno}-simulated_radiance.npy', retrieved_radiance)
+        np.save(f'/mnt/science/data/mars/maven/iuvs/retrievals/{orbit_block}/{orbit_code}-{fileno}-dust.npy', retrieved_dust)
+        np.save(f'/mnt/science/data/mars/maven/iuvs/retrievals/{orbit_block}/{orbit_code}-{fileno}-ice.npy', retrieved_ice)
+        np.save(f'/mnt/science/data/mars/maven/iuvs/retrievals/{orbit_block}/{orbit_code}-{fileno}-error.npy', retrieved_error)
+        np.save(f'/mnt/science/data/mars/maven/iuvs/retrievals/{orbit_block}/{orbit_code}-{fileno}-simulated_radiance.npy', retrieved_radiance)
 
     for file in range(len(l1b_files)):
         print(f'starting file {file}')
@@ -472,11 +486,6 @@ def perform_retrieval(orbit: int):
 
 
 if __name__ == '__main__':
-    #n_cpus = mp.cpu_count()  # = 8 for my old desktop, 12 for my laptop, 20 for my new desktop
-    #pool = mp.Pool(n_cpus - 2)  # save one/two just to be safe. Some say it's faster
     for orb in range(3453, 3454):
         # NOTE: if there are any issues in the argument of apply_async, it'll break out of that and move on to the next iteration.
-        perform_retrieval(3453)
-        #pool.apply_async(make_radiance, args=(orb,))
-    #pool.close()
-    #pool.join()
+        perform_retrieval(orb)
