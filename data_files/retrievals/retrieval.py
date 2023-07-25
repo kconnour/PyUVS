@@ -213,8 +213,21 @@ def perform_retrieval(orbit: int):
     gcm = Ames()
 
     # Read in radprop
+    # I have no f****** clue why I can't call these methods later on. If I define variables here, the multiprocessing
+    # works. If not, it breaks when these are called in parallel. It works when called in series
     dust_radprop = Dust()
+    dust_particle_sizes = dust_radprop.get_particle_sizes()
+    dust_wavelengths = dust_radprop.get_wavelengths()
+    dust_extinction_cross_sections = dust_radprop.get_extinction_cross_sections()
+    dust_scattering_cross_sections = dust_radprop.get_scattering_cross_sections()
+    dust_legendre_coefficients = dust_radprop.get_legendre_coefficients()
+
     ice_radprop = Ice()
+    ice_particle_sizes = ice_radprop.get_particle_sizes()
+    ice_wavelengths = ice_radprop.get_wavelengths()
+    ice_extinction_cross_sections = ice_radprop.get_extinction_cross_sections()
+    ice_scattering_cross_sections = ice_radprop.get_scattering_cross_sections()
+    ice_legendre_coefficients = ice_radprop.get_legendre_coefficients()
 
     n_streams = 8
     n_polar = 1  # defined by IUVS' viewing geometry
@@ -328,14 +341,14 @@ def perform_retrieval(orbit: int):
                     ##############
                     # Get the dust optical depth at 250 nm
                     dust_z_grad = np.linspace(1, 1.5, num=len(z)-1)
-                    ext = pyrt.extinction_ratio(dust_radprop.get_extinction_cross_sections(), dust_radprop.get_particle_sizes(), dust_radprop.get_wavelengths(), 0.25)
-                    ext = pyrt.regrid(ext, dust_radprop.get_particle_sizes(), dust_radprop.get_wavelengths(), dust_z_grad, pixel_wavs)
+                    ext = pyrt.extinction_ratio(dust_extinction_cross_sections, dust_particle_sizes, dust_wavelengths, 0.25)
+                    ext = pyrt.regrid(ext, dust_particle_sizes, dust_wavelengths, dust_z_grad, pixel_wavs)
                     dust_optical_depth = pyrt.optical_depth(dust_vprof, colden, ext, dust_guess)
                     dust_single_scattering_albedo = pyrt.regrid(
-                        dust_radprop.get_scattering_cross_sections() / dust_radprop.get_extinction_cross_sections(),
-                        dust_radprop.get_particle_sizes(), dust_radprop.get_wavelengths(), dust_z_grad, pixel_wavs)
-                    dust_legendre = pyrt.regrid(dust_radprop.get_legendre_coefficients(), dust_radprop.get_particle_sizes(),
-                                                dust_radprop.get_wavelengths(), dust_z_grad, pixel_wavs)
+                        dust_scattering_cross_sections / dust_extinction_cross_sections,
+                        dust_particle_sizes, dust_wavelengths, dust_z_grad, pixel_wavs)
+                    dust_legendre = pyrt.regrid(dust_legendre_coefficients, dust_particle_sizes,
+                                                dust_wavelengths, dust_z_grad, pixel_wavs)
                     dust_column = pyrt.Column(dust_optical_depth, dust_single_scattering_albedo, dust_legendre)
 
                     ##############
@@ -343,14 +356,14 @@ def perform_retrieval(orbit: int):
                     ##############
                     # Get the ice optical depth at 250 nm
                     ice_z_grad = np.linspace(5, 5, num=len(z)-1)
-                    ext = pyrt.extinction_ratio(ice_radprop.get_extinction_cross_sections(), ice_radprop.get_particle_sizes(), ice_radprop.get_wavelengths(), 0.25)
-                    ext = pyrt.regrid(ext, ice_radprop.get_particle_sizes(), ice_radprop.get_wavelengths(), ice_z_grad, pixel_wavs)
+                    ext = pyrt.extinction_ratio(ice_extinction_cross_sections, ice_particle_sizes, ice_wavelengths, 0.25)
+                    ext = pyrt.regrid(ext, ice_particle_sizes, ice_wavelengths, ice_z_grad, pixel_wavs)
                     ice_optical_depth = pyrt.optical_depth(ice_vprof, colden, ext, ice_guess)
                     ice_single_scattering_albedo = pyrt.regrid(
-                        ice_radprop.get_scattering_cross_sections() / ice_radprop.get_extinction_cross_sections(),
-                        ice_radprop.get_particle_sizes(), ice_radprop.get_wavelengths(), ice_z_grad, pixel_wavs)
-                    ice_legendre = pyrt.regrid(ice_radprop.get_legendre_coefficients(), ice_radprop.get_particle_sizes(),
-                                                ice_radprop.get_wavelengths(), ice_z_grad, pixel_wavs)
+                        ice_scattering_cross_sections / ice_extinction_cross_sections,
+                        ice_particle_sizes, ice_wavelengths, ice_z_grad, pixel_wavs)
+                    ice_legendre = pyrt.regrid(ice_legendre_coefficients, ice_particle_sizes,
+                                                ice_wavelengths, ice_z_grad, pixel_wavs)
                     ice_column = pyrt.Column(ice_optical_depth, ice_single_scattering_albedo, ice_legendre)
 
                     ##############
@@ -398,7 +411,6 @@ def perform_retrieval(orbit: int):
                                       transmissivity_medium, maxcmu=n_streams, maxulv=n_user_levels, maxmom=159)
                     simulated_toa_radiance[counter] = uu[0, 0, 0]
                     return simulated_toa_radiance
-
 
             def find_best_fit(guess: np.ndarray):
                 simulated_toa_reflectance = simulate_tau(guess)
@@ -469,7 +481,6 @@ def perform_retrieval(orbit: int):
                 #retrieval(integ, posit)
                 pool.apply_async(func=retrieval, args=(integ, posit), callback=make_answer)
                 # print(f'starting integ {integ} and posti {posit}')
-                # retrieval(integ, posit)
 
         # https://www.machinelearningplus.com/python/parallel-processing-python/
         pool.close()
