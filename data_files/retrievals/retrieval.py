@@ -204,7 +204,7 @@ def perform_retrieval(orbit: int):
     l1b_files = sorted((iuvs_data_location / orbit_block).glob(f'*apoapse*{orbit_code}*muv*.gz'))
     wavelength_files = sorted((wavelength_location / orbit_block).glob(f'*apoapse*{orbit_code}*muv*'))
     radiance_files = sorted((radiance_location / orbit_block).glob(f'{orbit_code}*'))
-
+    
     # Get apsis info
     apsis_file = File('/mnt/science/data_lake/mars/maven/apsis.hdf5')
     sol = apsis_file['apoapse/sol'][orbit]
@@ -269,7 +269,7 @@ def perform_retrieval(orbit: int):
             pixel_wavs = wavelengths[spatial_bin, :]
 
             # Make the surface
-            clancy_albedo = np.linspace(0.015, 0.1, num=100)
+            clancy_albedo = np.linspace(0.015, 0.01, num=100)
             clancy_wavelengths = np.linspace(0.2, 0.3, num=100)
             albedo = np.interp(pixel_wavs, clancy_wavelengths, clancy_albedo)
 
@@ -317,18 +317,19 @@ def perform_retrieval(orbit: int):
 
             # Choose a consistent set of wavelengths for all retrievals
             if len(pixel_wavs) == 20:
-                wavelength_indices = [1, 2, 3, -8, -7, -6]
+                wavelength_indices = [1, -6]
             elif len(pixel_wavs) == 19:
-                wavelength_indices = [1, 2, 3, -7, -6, -5]
+                #wavelength_indices = [1, -5]
+                wavelength_indices = [1]
             elif len(pixel_wavs) == 15:
-                wavelength_indices = [1, 2, 3, -3, -2, -1]
+                wavelength_indices = [1, -1]
 
             def simulate_tau(guess: np.ndarray) -> np.ndarray:
                 # print(f'guess = {guess}')
                 dust_guess = guess[0]
                 ice_guess = guess[1]
 
-                simulated_toa_radiance = np.zeros((len(wavelength_indices),))
+                simulated_toa_radiance = np.zeros((len(wavelength_indices),))# * np.nan
 
                 # This is a hack to add bounds to the solver
                 if np.any(guess < 0):
@@ -350,7 +351,6 @@ def perform_retrieval(orbit: int):
                     dust_legendre = pyrt.regrid(dust_legendre_coefficients, dust_particle_sizes,
                                                 dust_wavelengths, dust_z_grad, pixel_wavs)
                     dust_column = pyrt.Column(dust_optical_depth, dust_single_scattering_albedo, dust_legendre)
-
                     ##############
                     # Ice FSP
                     ##############
@@ -410,7 +410,7 @@ def perform_retrieval(orbit: int):
                                       mean_intensity, intensity, albedo_medium,
                                       transmissivity_medium, maxcmu=n_streams, maxulv=n_user_levels, maxmom=159)
                     simulated_toa_radiance[counter] = uu[0, 0, 0]
-                    return simulated_toa_radiance
+                return simulated_toa_radiance
 
             def find_best_fit(guess: np.ndarray):
                 simulated_toa_reflectance = simulate_tau(guess)
@@ -425,23 +425,17 @@ def perform_retrieval(orbit: int):
             # error = np.sum((reflectance[integration, spatial_bin, wavelength_indices] - sim)**2 / sim)
             total_error = np.abs(radiance[integration, spatial_bin, wavelength_indices] - sim) / radiance[integration, spatial_bin, wavelength_indices]
             error = np.sum(total_error) / len(total_error)  # This is the mean relative error
-            if error > 0.1:
+            '''if error > 0.1:
                 fitted_optical_depth = minimize(find_best_fit, np.array([0.5, 0.1]), method='Nelder-Mead', tol=1e-2, bounds=((0, 2), (0, 1)), options={'adaptive': True}).x
                 best_fit_od = np.array(fitted_optical_depth)
                 sim = simulate_tau(best_fit_od)
                 # error = np.sum((reflectance[integration, spatial_bin, wavelength_indices] - sim)**2 / sim)
                 total_error = np.abs(radiance[integration, spatial_bin, wavelength_indices] - sim) / radiance[integration, spatial_bin, wavelength_indices]
                 error = np.sum(total_error) / len(total_error)  # This is the mean relative error
-
-            '''print(f'data = {reflectance[integration, spatial_bin, wavelength_indices]}')
-            print(f'sim = {sim}')
-            print(f'answer={fitted_optical_depth}')
-            print(f'error = {error}')
-            t1 = time.time()
-            print(t1 - t0)
-            print(pixel_lat, pixel_lon)
-            raise SystemExit(9)'''
-            print(f'The best fit OD was {best_fit_od}')
+            '''
+            #print(f'data = {radiance[integration, spatial_bin, wavelength_indices]}')
+            #print(integration, spatial_bin, best_fit_od, error, sim, radiance[integration, spatial_bin, wavelength_indices])
+            #raise SystemExit(9)
             return integration, spatial_bin, best_fit_od, error, sim
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -477,6 +471,8 @@ def perform_retrieval(orbit: int):
         # retrieve_ssa), it'll break out of that and move on to the next iteration.
 
         for integ in range(radiance.shape[0]):
+        #for integ in [0]:
+            #for posit in [84]:
             for posit in range(radiance.shape[1]):
                 #retrieval(integ, posit)
                 pool.apply_async(func=retrieval, args=(integ, posit), callback=make_answer)
@@ -490,13 +486,21 @@ def perform_retrieval(orbit: int):
         np.save(f'/mnt/science/data/mars/maven/iuvs/retrievals/{orbit_block}/{orbit_code}-{fileno}-ice.npy', retrieved_ice)
         np.save(f'/mnt/science/data/mars/maven/iuvs/retrievals/{orbit_block}/{orbit_code}-{fileno}-error.npy', retrieved_error)
         np.save(f'/mnt/science/data/mars/maven/iuvs/retrievals/{orbit_block}/{orbit_code}-{fileno}-simulated_radiance.npy', retrieved_radiance)
+        del retrieved_dust
+        del retrieved_ice
+        del retrieved_error
+        del retrieved_radiance
 
-    for file in range(len(l1b_files)):
+    #for file in range(len(l1b_files)):
+    for file in [5]:
         print(f'starting file {file}')
         process_file(file)
 
 
 if __name__ == '__main__':
+    import time
+    t0 = time.time()
     for orb in range(3453, 3454):
         # NOTE: if there are any issues in the argument of apply_async, it'll break out of that and move on to the next iteration.
         perform_retrieval(orb)
+    print(time.time() - t0)
