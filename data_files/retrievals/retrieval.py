@@ -319,8 +319,8 @@ def perform_retrieval(orbit: int):
             if len(pixel_wavs) == 20:
                 wavelength_indices = [1, -6]
             elif len(pixel_wavs) == 19:
-                #wavelength_indices = [1, -5]
-                wavelength_indices = [1]
+                wavelength_indices = [1, -5]
+                #wavelength_indices = [1]
             elif len(pixel_wavs) == 15:
                 wavelength_indices = [1, -1]
 
