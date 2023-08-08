@@ -2,6 +2,7 @@ from pathlib import Path
 import multiprocessing as mp
 import os
 from tempfile import mkdtemp
+import math
 
 from astropy.io import fits
 from h5py import File
@@ -12,11 +13,10 @@ from scipy.optimize import minimize
 
 import pyrt
 
-# lut is at /mnt/science/data_lake/mars/maven/iuvs/lut.npy
 
 class Ames:
     def __init__(self):
-        self._base_path = Path('/home/kyle/Downloads')
+        self._base_path = Path('/mnt/science/data_lake/mars/gcm/ames/my_generic')
 
         self._fixed = Dataset(self._base_path / '05344.fixed.nc')
         self._average = Dataset(self._base_path / '05344.atmos_average.nc')
@@ -97,101 +97,112 @@ class Ames:
         return self.surface_temperature[season_idx]
 
 
-orbit = 3453
-# Read in external files
-lut = np.load('/home/kyle/lut.npy')
-radiance_files = sorted(Path('/home/kyle/iuvs/radiance03453').glob(f'orbit*{orbit}*'))
-fits_files = sorted(Path('/media/kyle/iuvs/production/orbit03400').glob('*apoapse*orbit03453*muv*.gz'))
-hduls = [fits.open(f) for f in fits_files]
-apsis_file = File('/media/kyle/iuvs/apsis.hdf5')
+for orbit in range(3400, 3500):
+    block = math.floor(orbit / 100) * 100
+    block_code = 'orbit' + f'{block}'.zfill(5)
+    orbit_code = 'orbit' + f'{orbit}'.zfill(5)
+    # Read in external files
+    lut = np.load('/mnt/science/data_lake/mars/maven/iuvs/lut.npy')
+    radiance_files = sorted(Path(f'/mnt/science/data/mars/maven/iuvs/radiance/{block_code}').glob(f'orbit*{orbit}*'))
+    fits_files = sorted(Path(f'/mnt/science/data_lake/mars/maven/iuvs/production/{block_code}').glob(f'*apoapse*{orbit_code}*muv*.gz'))
+    hduls = [fits.open(f) for f in fits_files]
+    apsis_file = File('/mnt/science/data_lake/mars/maven/apsis.hdf5')
 
-# Make the sol info
-sol = apsis_file['apoapse/sol'][3453]
+    # Define save location
+    save_location = Path('/mnt/science/data/mars/maven/iuvs/retrievals')
 
-# Make the interpolation
-sza_grid = np.arange(8) * 10
-ea_grid = np.arange(8) * 10
-azimuth_grid = np.arange(19) * 10
-pressure_grid = np.linspace(0.3, 13.3, 10) * 100
-dust_grid = np.arange(21) / 10
-ice_grid = np.arange(11) / 10
-wavelength_grid = np.array([0.210, 0.215, 0.220, 0.272, 0.278, 0.284])
+    # Make the sol info
+    sol = apsis_file['apoapse/sol'][3453]
 
-interp = RegularGridInterpolator((sza_grid, ea_grid, azimuth_grid, pressure_grid, dust_grid, ice_grid, wavelength_grid), lut)
+    # Make the interpolation
+    sza_grid = np.arange(8) * 10
+    ea_grid = np.arange(8) * 10
+    azimuth_grid = np.arange(19) * 10
+    pressure_grid = np.linspace(0.3, 13.3, 10) * 100
+    dust_grid = np.arange(21) / 10
+    ice_grid = np.arange(11) / 10
+    wavelength_grid = np.array([0.210, 0.215, 0.220, 0.272, 0.278, 0.284])
 
-# Get pressure info
-gcm = Ames()
-season_surface_pressure = gcm.get_season_surface_pressure(sol)
-sfc_interp = RegularGridInterpolator((gcm.latitude, gcm.longitude), season_surface_pressure)
+    interp = RegularGridInterpolator((sza_grid, ea_grid, azimuth_grid, pressure_grid, dust_grid, ice_grid, wavelength_grid), lut)
 
+    # Get pressure info
+    gcm = Ames()
+    season_surface_pressure = gcm.get_season_surface_pressure(sol)
+    sfc_interp = RegularGridInterpolator((gcm.latitude, gcm.longitude), season_surface_pressure)
 
-for counter, radiance in enumerate(radiance_files):
-    rad = np.load(radiance)
-    szas = hduls[counter]['pixelgeometry'].data['pixel_solar_zenith_angle']
-    eas = hduls[counter]['pixelgeometry'].data['pixel_emission_angle']
-    pas = hduls[counter]['pixelgeometry'].data['pixel_phase_angle']
-    alts = hduls[counter]['pixelgeometry'].data['pixel_corner_mrh_alt'][:, :, 4]
-    azimuths = pyrt.azimuth(szas, eas, pas)
-    latitudes = hduls[counter]['pixelgeometry'].data['pixel_corner_lat'][:, :, 4]
-    longitudes = hduls[counter]['pixelgeometry'].data['pixel_corner_lon'][:, :, 4]
+    for counter, radiance in enumerate(radiance_files):
+        rad = np.load(radiance)
+        szas = hduls[counter]['pixelgeometry'].data['pixel_solar_zenith_angle']
+        eas = hduls[counter]['pixelgeometry'].data['pixel_emission_angle']
+        pas = hduls[counter]['pixelgeometry'].data['pixel_phase_angle']
+        alts = hduls[counter]['pixelgeometry'].data['pixel_corner_mrh_alt'][:, :, 4]
+        azimuths = pyrt.azimuth(szas, eas, pas)
+        latitudes = hduls[counter]['pixelgeometry'].data['pixel_corner_lat'][:, :, 4]
+        longitudes = hduls[counter]['pixelgeometry'].data['pixel_corner_lon'][:, :, 4]
 
-    if rad.shape[-1] == 20:
-        wavelength_indices = [1, 2, 3, -8, -7, -6]
-    elif rad.shape[-1] == 19:
-        wavelength_indices = [1, 2, 3, -7, -6, -5]
-    elif rad.shape[-1] == 15:
-        wavelength_indices = [1, 2, 3, -3, -2, -1]
+        if rad.shape[-1] == 20:
+            wavelength_indices = [1, 2, 3, -8, -7, -6]
+        elif rad.shape[-1] == 19:
+            wavelength_indices = [1, 2, 3, -7, -6, -5]
+        elif rad.shape[-1] == 15:
+            wavelength_indices = [1, 2, 3, -3, -2, -1]
 
-    memmap_filename_answer = os.path.join(mkdtemp(), 'myNewFileAnswer.dat')
-    answer = np.memmap(memmap_filename_answer, dtype=float, shape=latitudes.shape + (9,), mode='w+') * np.nan # 9 is for dust, ice, error, simulated I/F at 6 wavelengths
-    answer0 = np.zeros(latitudes.shape + (9,)) * np.nan
+        memmap_filename_answer = os.path.join(mkdtemp(), 'myNewFileAnswer.dat')
+        answer = np.memmap(memmap_filename_answer, dtype=float, shape=latitudes.shape + (9,), mode='w+') * np.nan # 9 is for dust, ice, error, simulated I/F at 6 wavelengths
+        answer0 = np.zeros(latitudes.shape + (9,)) * np.nan
 
-    def fit_dust_and_ice(radiance, sza, ea, aza, psurf) -> float:
-        def find_best_fit(guess: np.ndarray):
-            dust_guess = guess[0]
-            ice_guess = guess[1]
-            simulated_spectrum = np.zeros(wavelength_grid.shape) * np.nan
+        def fit_dust_and_ice(radiance, sza, ea, aza, psurf) -> float:
+            def find_best_fit(guess: np.ndarray):
+                dust_guess = guess[0]
+                ice_guess = guess[1]
+                simulated_spectrum = np.zeros(wavelength_grid.shape) * np.nan
+                for c, wav in enumerate(wavelength_grid):
+                    input = np.array([sza, ea, aza, psurf, dust_guess, ice_guess, wav])
+                    simulated_spectrum[c] = interp(input)
+                return np.sum((simulated_spectrum - radiance[wavelength_indices])**2)
+
+            return minimize(find_best_fit, np.array([0.7, 0.2]), method='Nelder-Mead', tol=1e-2, bounds=((0, 2), (0, 1)), options={'adaptive': True}).x
+
+        def make_array(input):
+            # I have no idea why this bit is necessary. I couldn't get it to just save the lut after doing the multiprocessing.
+            ind0 = input[0]
+            ind1 = input[1]
+            arr = input[2]
+
+            answer0[ind0, ind1] = arr
+
+        def do_retrieval(integration, spatial_bin):
+            print(integration, spatial_bin)
+            if alts[integration, spatial_bin] != 0 or szas[integration, spatial_bin] > 70 or eas[integration, spatial_bin] > 70:
+                return integration, spatial_bin, np.zeros(9,) * np.nan
+            sfc_pressure = sfc_interp(np.array([latitudes[integration, spatial_bin], longitudes[integration, spatial_bin]]))[0]
+            answer[integration, spatial_bin, :2] = fit_dust_and_ice(rad[integration, spatial_bin], szas[integration, spatial_bin], eas[integration, spatial_bin], azimuths[integration, spatial_bin], sfc_pressure)
+
+            # Get the spectrum of the best fit answer
+            sim_spec = np.zeros(6,)
             for c, wav in enumerate(wavelength_grid):
-                input = np.array([sza, ea, aza, psurf, dust_guess, ice_guess, wav])
-                simulated_spectrum[c] = interp(input)
-            return np.sum((simulated_spectrum - radiance[wavelength_indices])**2)
+                sim_spec[c] = interp(np.array([szas[integration, spatial_bin], eas[integration, spatial_bin], azimuths[integration, spatial_bin], sfc_pressure, answer[integration, spatial_bin, 0], answer[integration, spatial_bin, 1], wav]))
+            error = np.sum((rad[integration, spatial_bin, wavelength_indices] - sim_spec)**2 / sim_spec)
+            #error = np.sum(np.abs((rad[integration, spatial_bin, wavelength_indices] - sim_spec)**2/rad[integration, spatial_bin, wavelength_indices]))
 
-        return minimize(find_best_fit, np.array([0.7, 0.2]), method='Nelder-Mead', tol=1e-2, bounds=((0, 2), (0, 1)), options={'adaptive': True}).x
+            # Add the spectrum to the array
+            answer[integration, spatial_bin, 2] = error
+            answer[integration, spatial_bin, 3:] = sim_spec
+            return integration, spatial_bin, answer[integration, spatial_bin]
 
-    def make_array(input):
-        # I have no idea why this bit is necessary. I couldn't get it to just save the lut after doing the multiprocessing.
-        ind0 = input[0]
-        ind1 = input[1]
-        arr = input[2]
+        n_cpus = mp.cpu_count()
+        pool = mp.Pool(n_cpus - 1)
+        for integration in range(rad.shape[0]):
+            for spatial_bin in range(rad.shape[1]):
+                pool.apply_async(func=do_retrieval, args=(integration, spatial_bin), callback=make_array)
 
-        answer0[ind0, ind1] = arr
+        # https://www.machinelearningplus.com/python/parallel-processing-python/
+        pool.close()
+        pool.join()
 
-    def do_retrieval(integration, spatial_bin):
-        print(integration, spatial_bin)
-        if alts[integration, spatial_bin] != 0 or szas[integration, spatial_bin] > 70 or eas[integration, spatial_bin] > 70:
-            return integration, spatial_bin, np.zeros(9,) * np.nan
-        sfc_pressure = sfc_interp(np.array([latitudes[integration, spatial_bin], longitudes[integration, spatial_bin]]))[0]
-        answer[integration, spatial_bin, :2] = fit_dust_and_ice(rad[integration, spatial_bin], szas[integration, spatial_bin], eas[integration, spatial_bin], azimuths[integration, spatial_bin], sfc_pressure)
+        # Save the file
+        fn = f'{counter}'.zfill(2)
+        filename = save_location / block_code / f'{orbit_code}-{fn}.npy'
+        filename.parent.mkdir(parents=True, exist_ok=True)
+        np.save(str(filename), radiance)
 
-        # Get the spectrum of the best fit answer
-        sim_spec = np.zeros(6,)
-        for c, wav in enumerate(wavelength_grid):
-            sim_spec[c] = interp(np.array([szas[integration, spatial_bin], eas[integration, spatial_bin], azimuths[integration, spatial_bin], sfc_pressure, answer[integration, spatial_bin, 0], answer[integration, spatial_bin, 1], wav]))
-        error = np.sum((rad[integration, spatial_bin, wavelength_indices] - sim_spec)**2 / sim_spec)
-        #error = np.sum(np.abs((rad[integration, spatial_bin, wavelength_indices] - sim_spec)**2/rad[integration, spatial_bin, wavelength_indices]))
-
-        # Add the spectrum to the array
-        answer[integration, spatial_bin, 2] = error
-        answer[integration, spatial_bin, 3:] = sim_spec
-        return integration, spatial_bin, answer[integration, spatial_bin]
-
-    n_cpus = mp.cpu_count()
-    pool = mp.Pool(n_cpus - 1)
-    for integration in range(rad.shape[0]):
-        for spatial_bin in range(rad.shape[1]):
-            pool.apply_async(func=do_retrieval, args=(integration, spatial_bin), callback=make_array)
-
-    # https://www.machinelearningplus.com/python/parallel-processing-python/
-    pool.close()
-    pool.join()
-    np.save(f'/home/kyle/iuvs/radiance03453/{str(counter).zfill(2)}new.npy', answer0)
