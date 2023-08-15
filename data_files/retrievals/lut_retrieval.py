@@ -118,19 +118,35 @@ for orbit in range(3400, 3500):
     sza_grid = np.arange(8) * 10
     ea_grid = np.arange(8) * 10
     azimuth_grid = np.arange(19) * 10
+    hapke_w_grid = np.arange(8)/100 + 0.05
     pressure_grid = np.linspace(0.3, 13.3, 10) * 100
     dust_grid = np.arange(21) / 10
     ice_grid = np.arange(11) / 10
     wavelength_grid = np.array([0.210, 0.215, 0.220, 0.272, 0.278, 0.284])
 
-    interp = RegularGridInterpolator((sza_grid, ea_grid, azimuth_grid, pressure_grid, dust_grid, ice_grid, wavelength_grid), lut)
+    interp = RegularGridInterpolator((sza_grid, ea_grid, azimuth_grid, hapke_w_grid, pressure_grid, dust_grid, ice_grid, wavelength_grid), lut)
 
     # Get pressure info
     gcm = Ames()
     season_surface_pressure = gcm.get_season_surface_pressure(sol)
     sfc_interp = RegularGridInterpolator((gcm.latitude, gcm.longitude), season_surface_pressure)
 
+    # Get the surface phase function
+    marci_wavelengths = [0.260, 0.320]
+    w6 = fits.open('/mnt/science/data_lake/mars/band6_w.fits')
+    w7 = fits.open('/mnt/science/data_lake/mars/band7_w.fits')
+    w6 = np.roll(w6['primary'].data, 180, axis=1)
+    w7 = np.roll(w7['primary'].data, 180, axis=1)
+
+    hapkew_lat = np.linspace(-90, 90, num=180)
+    hapkew_lon = np.linspace(0, 360, num=360)
+
+    stacked_hapke_w = np.dstack([w6, w7])
+    hapke_w = RegularGridInterpolator((hapkew_lat, hapkew_lon, marci_wavelengths), stacked_hapke_w)
+
     for counter, radiance in enumerate(radiance_files):
+        if counter != 0:
+            continue
         rad = np.load(radiance)
         szas = hduls[counter]['pixelgeometry'].data['pixel_solar_zenith_angle']
         eas = hduls[counter]['pixelgeometry'].data['pixel_emission_angle']
@@ -151,13 +167,13 @@ for orbit in range(3400, 3500):
         answer = np.memmap(memmap_filename_answer, dtype=float, shape=latitudes.shape + (9,), mode='w+') * np.nan # 9 is for dust, ice, error, simulated I/F at 6 wavelengths
         answer0 = np.zeros(latitudes.shape + (9,)) * np.nan
 
-        def fit_dust_and_ice(radiance, sza, ea, aza, psurf) -> float:
+        def fit_dust_and_ice(radiance, sza, ea, aza, psurf, pix_hapke_w) -> float:
             def find_best_fit(guess: np.ndarray):
                 dust_guess = guess[0]
                 ice_guess = guess[1]
                 simulated_spectrum = np.zeros(wavelength_grid.shape) * np.nan
                 for c, wav in enumerate(wavelength_grid):
-                    input = np.array([sza, ea, aza, psurf, dust_guess, ice_guess, wav])
+                    input = np.array([sza, ea, aza, pix_hapke_w, psurf, dust_guess, ice_guess, wav])
                     simulated_spectrum[c] = interp(input)
                 return np.sum((simulated_spectrum - radiance[wavelength_indices])**2)
 
@@ -176,7 +192,8 @@ for orbit in range(3400, 3500):
             if alts[integration, spatial_bin] != 0 or szas[integration, spatial_bin] > 70 or eas[integration, spatial_bin] > 70:
                 return integration, spatial_bin, np.zeros(9,) * np.nan
             sfc_pressure = sfc_interp(np.array([latitudes[integration, spatial_bin], longitudes[integration, spatial_bin]]))[0]
-            answer[integration, spatial_bin, :2] = fit_dust_and_ice(rad[integration, spatial_bin], szas[integration, spatial_bin], eas[integration, spatial_bin], azimuths[integration, spatial_bin], sfc_pressure)
+            pixel_hapke_w = hapke_w(np.array([latitudes[integration, spatial_bin], longitudes[integration, spatial_bin], 0.260]))[0]   # hack... say the hapke w is spatially variable but not spectrally variable. Doing it spectrally would require code redesign
+            answer[integration, spatial_bin, :2] = fit_dust_and_ice(rad[integration, spatial_bin], szas[integration, spatial_bin], eas[integration, spatial_bin], azimuths[integration, spatial_bin], sfc_pressure, pixel_hapke_w)
 
             # Get the spectrum of the best fit answer
             sim_spec = np.zeros(6,)
@@ -205,4 +222,3 @@ for orbit in range(3400, 3500):
         filename = save_location / block_code / f'{orbit_code}-{fn}.npy'
         filename.parent.mkdir(parents=True, exist_ok=True)
         np.save(str(filename), radiance)
-

@@ -160,14 +160,14 @@ user_od_output = np.zeros(n_user_levels)
 temper = np.zeros(n_user_levels)
 h_lyr = np.zeros(n_user_levels)
 
-# 8 SZAs (0--70), 8 EAs (0--70), 19 azimuth angles (0--180), 10 Psurf (same ones as Mike), 21 dust OD (0--2), 11 ice OD (0--1), 6 wavelengths (3 short wavelength and 3 long wavelength)
-# Why azimuth angles instead of phase angles?
-#lut = np.zeros((8, 19, 10, 21, 11, 6)) * np.nan
-
+# 8 SZAs (0--70), 8 EAs (0--70), 19 azimuth angles (0--180),
+# 8 Hapke w's, 10 Psurf (same ones as Mike), 21 dust OD (0--2), 11 ice OD (0--1),
+# 6 wavelengths (3 short wavelength and 3 long wavelength)
 memmap_filename_lut = os.path.join(mkdtemp(), 'myNewFileLUT.dat')
 memmap_filename_lut0 = os.path.join(mkdtemp(), 'myNewFileLUT0.dat')
-lut = np.memmap(memmap_filename_lut, dtype=float, shape=(8, 8, 19, 10, 21, 11, 6), mode='w+') * np.nan
-lut0 = np.memmap(memmap_filename_lut0, dtype=float, shape=(8, 8, 19, 10, 21, 11, 6), mode='w+') * np.nan
+lut = np.memmap(memmap_filename_lut, dtype=float, shape=(8, 8, 19, 8, 10, 21, 11, 6), mode='w+') * np.nan
+lut0 = np.memmap(memmap_filename_lut0, dtype=float, shape=(8, 8, 19, 8, 10, 21, 11, 6), mode='w+') * np.nan
+
 
 def process_lut(a, sza, b, ea):
     for c, azimuth in enumerate(np.arange(19) * 10):
@@ -177,73 +177,72 @@ def process_lut(a, sza, b, ea):
         # The surface part straight up gives nonsense when calling DISORT. I'm keeping it here because this is how I ought to do it,
         #  but I'm not using it. I would do it... but there's no documentation of what these damn arrays are even supposed to be
         #  so any attempts to debug would just be guesswork
-        surfaces = [pyrt.Surface(0.01, n_streams, n_polar, n_azimuth, True, False) for i in range(6)]
-        for index, i in enumerate(surfaces):
-            i.make_lambertian()
-            '''i.make_hapkeHG2_roughness(0.8, 0.06, wolff_hapke[index], 0.3, 0.45, 20, mu, mu0, azimuth, 0, np.pi)'''
+        for cc, hapke_w in enumerate(np.arange(8)/100 + 0.05):
+            rhoq, rhou, emust, bemst, rho_accurate = pyrt.make_hapkeHG2roughness_surface(True, False, n_polar, n_azimuth, n_streams, mu, mu0, azimuth, 0, np.pi, 200, 1, 0.06, hapke_w, 0.26, 0.3, 15)
 
-        for d, surface_pressure in enumerate(np.linspace(0.3, 13.3, 10)):
-            pressure = surface_pressure * 100 * np.exp(-z / 10)
-            colden = np.flip(pyrt.column_density(pressure, temperature, z))
-            rayleigh_co2 = pyrt.rayleigh_co2(colden, iuvs_wavelengths)
+            for d, surface_pressure in enumerate(np.linspace(0.3, 13.3, 10)):
+                pressure = surface_pressure * 100 * np.exp(-z / 10)
+                colden = pyrt.column_density(pressure, temperature, z) / mu0
+                rayleigh_co2 = pyrt.rayleigh_co2(colden, iuvs_wavelengths)
 
-            dust_profile = pyrt.conrath(altitude_midpoint, 1, 10, 0.01)
-            ice_profile = np.logical_and(25 <= altitude_midpoint, altitude_midpoint <= 50)
-            ice_profile = ice_profile / np.sum(ice_profile)
+                dust_profile = pyrt.conrath(altitude_midpoint, 1, 10, 0.01)
+                dust_profile = dust_profile / np.sum(dust_profile)
+                ice_profile = np.logical_and(25 <= altitude_midpoint, altitude_midpoint <= 50)
+                ice_profile = ice_profile / np.sum(ice_profile)
 
-            for e, dust_od in enumerate(np.arange(21) / 10):
-                ##############
-                # Dust FSP
-                ##############
-                # Get the dust optical depth at 250 nm
-                dust_z_grad = np.linspace(1, 1.5, num=len(z) - 1)
-                ext = pyrt.extinction_ratio(dust_extinction_cross_sections, dust_particle_sizes, dust_wavelengths, 0.25)
-                ext = pyrt.regrid(ext, dust_particle_sizes, dust_wavelengths, dust_z_grad, iuvs_wavelengths)
-                dust_optical_depth = pyrt.optical_depth(dust_profile, colden, ext, dust_od)
-                dust_single_scattering_albedo = pyrt.regrid(
-                    dust_scattering_cross_sections / dust_extinction_cross_sections,
-                    dust_particle_sizes, dust_wavelengths, dust_z_grad, iuvs_wavelengths)
-                dust_legendre = pyrt.regrid(dust_legendre_coefficients, dust_particle_sizes,
-                                            dust_wavelengths, dust_z_grad, iuvs_wavelengths)
-                dust_column = pyrt.Column(dust_optical_depth, dust_single_scattering_albedo, dust_legendre)
-                for f, ice_od in enumerate(np.arange(11) / 10):
+                for e, dust_od in enumerate(np.arange(21) / 10):
                     ##############
-                    # Ice FSP
+                    # Dust FSP
                     ##############
-                    # Get the ice optical depth at 250 nm
-                    ice_z_grad = np.linspace(5, 5, num=len(z) - 1)
-                    ext = pyrt.extinction_ratio(ice_extinction_cross_sections, ice_particle_sizes, ice_wavelengths, 0.25)
-                    ext = pyrt.regrid(ext, ice_particle_sizes, ice_wavelengths, ice_z_grad, iuvs_wavelengths)
-                    ice_optical_depth = pyrt.optical_depth(ice_profile, colden, ext, ice_od)
-                    ice_single_scattering_albedo = pyrt.regrid(
-                        ice_scattering_cross_sections / ice_extinction_cross_sections,
-                        ice_particle_sizes, ice_wavelengths, ice_z_grad, iuvs_wavelengths)
-                    ice_legendre = pyrt.regrid(ice_legendre_coefficients, ice_particle_sizes,
-                                               ice_wavelengths, ice_z_grad, iuvs_wavelengths)
-                    ice_column = pyrt.Column(ice_optical_depth, ice_single_scattering_albedo, ice_legendre)
+                    # Get the dust optical depth at 250 nm
+                    dust_z_grad = np.linspace(1, 1.5, num=len(z) - 1)
+                    ext = pyrt.extinction_ratio(dust_extinction_cross_sections, dust_particle_sizes, dust_wavelengths, 0.25)
+                    ext = pyrt.regrid(ext, dust_particle_sizes, dust_wavelengths, dust_z_grad, iuvs_wavelengths)
+                    dust_optical_depth = pyrt.optical_depth(dust_profile, colden, ext, dust_od)
+                    dust_single_scattering_albedo = pyrt.regrid(
+                        dust_scattering_cross_sections / dust_extinction_cross_sections,
+                        dust_particle_sizes, dust_wavelengths, dust_z_grad, iuvs_wavelengths)
+                    dust_legendre = pyrt.regrid(dust_legendre_coefficients, dust_particle_sizes,
+                                                dust_wavelengths, dust_z_grad, iuvs_wavelengths)
+                    dust_column = pyrt.Column(dust_optical_depth, dust_single_scattering_albedo, dust_legendre)
+                    for f, ice_od in enumerate(np.arange(11) / 10):
+                        ##############
+                        # Ice FSP
+                        ##############
+                        # Get the ice optical depth at 250 nm
+                        ice_z_grad = np.linspace(5, 5, num=len(z) - 1)
+                        ext = pyrt.extinction_ratio(ice_extinction_cross_sections, ice_particle_sizes, ice_wavelengths, 0.25)
+                        ext = pyrt.regrid(ext, ice_particle_sizes, ice_wavelengths, ice_z_grad, iuvs_wavelengths)
+                        ice_optical_depth = pyrt.optical_depth(ice_profile, colden, ext, ice_od)
+                        ice_single_scattering_albedo = pyrt.regrid(
+                            ice_scattering_cross_sections / ice_extinction_cross_sections,
+                            ice_particle_sizes, ice_wavelengths, ice_z_grad, iuvs_wavelengths)
+                        ice_legendre = pyrt.regrid(ice_legendre_coefficients, ice_particle_sizes,
+                                                   ice_wavelengths, ice_z_grad, iuvs_wavelengths)
+                        ice_column = pyrt.Column(ice_optical_depth, ice_single_scattering_albedo, ice_legendre)
 
-                    ##############
-                    # Total atmosphere + DISORT call
-                    ##############
-                    atm = rayleigh_co2 + dust_column + ice_column
+                        ##############
+                        # Total atmosphere + DISORT call
+                        ##############
+                        atm = rayleigh_co2 + dust_column + ice_column
 
-                    for g, wavelength in enumerate(iuvs_wavelengths):
-                        rfldir, rfldn, flup, dfdt, uavg, uu, albmed, trnmed = \
-                            disort.disort(True, False, False, False, [False, False, False, False, False],
-                                          False, True, True, False,
-                                          atm.optical_depth[:, g],
-                                          atm.single_scattering_albedo[:, g],
-                                          atm.legendre_coefficients[:, :, g],
-                                          temper, 1, 1, user_od_output,
-                                          mu0, 0, mu, azimuth,
-                                          np.pi, 0, clancy_lambert_albedo[g], 0, 0, 1, 3400000, h_lyr,
-                                          surfaces[g].rhoq, surfaces[g].rhou, surfaces[g].rho_accurate, surfaces[g].bemst, surfaces[g].emust,
-                                          0, '', direct_beam_flux,
-                                          diffuse_down_flux, diffuse_up_flux, flux_divergence,
-                                          mean_intensity, intensity, albedo_medium,
-                                          transmissivity_medium, maxcmu=n_streams, maxulv=n_user_levels, maxmom=159)
+                        for g, wavelength in enumerate(iuvs_wavelengths):
+                            rfldir, rfldn, flup, dfdt, uavg, uu, albmed, trnmed = \
+                                disort.disort(True, False, False, False, [False, False, False, False, False],
+                                              False, False, True, False,
+                                              atm.optical_depth[:, g],
+                                              atm.single_scattering_albedo[:, g],
+                                              atm.legendre_coefficients[:, :, g],
+                                              temper, 1, 1, user_od_output,
+                                              mu0, 0, mu, azimuth,
+                                              np.pi, 0, clancy_lambert_albedo[g], 0, 0, 1, 3400000, h_lyr,
+                                              rhoq, rhou, rho_accurate, bemst, emust,
+                                              0, '', direct_beam_flux,
+                                              diffuse_down_flux, diffuse_up_flux, flux_divergence,
+                                              mean_intensity, intensity, albedo_medium,
+                                              transmissivity_medium, maxcmu=n_streams, maxulv=n_user_levels, maxmom=159)
 
-                        lut[a, b, c, d, e, f, g] = uu[0, 0, 0]
+                            lut[a, b, c, cc, d, e, f, g] = uu[0, 0, 0]
     return lut, a, b
 
 
@@ -261,7 +260,7 @@ def make_lut():
     # https://www.machinelearningplus.com/python/parallel-processing-python/
     pool.close()
     pool.join()  # I guess this postpones further code execution until the queue is finished
-    np.save(f'/home/kyle/lut.npy', lut0)
+    np.save(f'/home/kyle/lut-hapke.npy', lut0)
 
 
 def make_array(input):
