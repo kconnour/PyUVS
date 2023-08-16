@@ -145,8 +145,6 @@ for orbit in range(3400, 3500):
     hapke_w = RegularGridInterpolator((hapkew_lat, hapkew_lon, marci_wavelengths), stacked_hapke_w)
 
     for counter, radiance in enumerate(radiance_files):
-        if counter != 0:
-            continue
         rad = np.load(radiance)
         szas = hduls[counter]['pixelgeometry'].data['pixel_solar_zenith_angle']
         eas = hduls[counter]['pixelgeometry'].data['pixel_emission_angle']
@@ -198,7 +196,7 @@ for orbit in range(3400, 3500):
             # Get the spectrum of the best fit answer
             sim_spec = np.zeros(6,)
             for c, wav in enumerate(wavelength_grid):
-                sim_spec[c] = interp(np.array([szas[integration, spatial_bin], eas[integration, spatial_bin], azimuths[integration, spatial_bin], sfc_pressure, answer[integration, spatial_bin, 0], answer[integration, spatial_bin, 1], wav]))
+                sim_spec[c] = interp(np.array([szas[integration, spatial_bin], eas[integration, spatial_bin], azimuths[integration, spatial_bin], pixel_hapke_w, sfc_pressure, answer[integration, spatial_bin, 0], answer[integration, spatial_bin, 1], wav]))
             error = np.sum((rad[integration, spatial_bin, wavelength_indices] - sim_spec)**2 / sim_spec)
             #error = np.sum(np.abs((rad[integration, spatial_bin, wavelength_indices] - sim_spec)**2/rad[integration, spatial_bin, wavelength_indices]))
 
@@ -221,4 +219,4 @@ for orbit in range(3400, 3500):
         fn = f'{counter}'.zfill(2)
         filename = save_location / block_code / f'{orbit_code}-{fn}.npy'
         filename.parent.mkdir(parents=True, exist_ok=True)
-        np.save(str(filename), radiance)
+        np.save(str(filename), answer0)
