@@ -145,7 +145,7 @@ for orbit in range(3300, 3400):
     orbit_block = 'orbit' + f'{block}'.zfill(5)
 
     base_path = Path(f'/mnt/science/data/mars/maven/iuvs/retrievals/{orbit_block}')# Path(f'/mnt/science/data/mars/maven/iuvs/retrievals/{orbit_block}')
-    files = sorted(base_path.glob('*'))
+    files = sorted(base_path.glob(f'{orbit_code}*'))
     retrievals = np.vstack([np.load(f) for f in files])
     dust = retrievals[..., 0]
     ice = retrievals[..., 1]

@@ -124,12 +124,12 @@ for orbit in range(3400, 3500):
     ice_grid = np.arange(11) / 10
     wavelength_grid = np.array([0.210, 0.215, 0.220, 0.272, 0.278, 0.284])
 
-    interp = RegularGridInterpolator((sza_grid, ea_grid, azimuth_grid, hapke_w_grid, pressure_grid, dust_grid, ice_grid, wavelength_grid), lut)
+    interp = RegularGridInterpolator((sza_grid, ea_grid, azimuth_grid, hapke_w_grid, pressure_grid, dust_grid, ice_grid, wavelength_grid), lut, bounds_error=False, fill_value=None)
 
     # Get pressure info
     gcm = Ames()
     season_surface_pressure = gcm.get_season_surface_pressure(sol)
-    sfc_interp = RegularGridInterpolator((gcm.latitude, gcm.longitude), season_surface_pressure)
+    sfc_interp = RegularGridInterpolator((gcm.latitude, gcm.longitude), season_surface_pressure, bounds_error=False, fill_value=None)
 
     # Get the surface phase function
     marci_wavelengths = [0.260, 0.320]
@@ -142,7 +142,7 @@ for orbit in range(3400, 3500):
     hapkew_lon = np.linspace(0, 360, num=360)
 
     stacked_hapke_w = np.dstack([w6, w7])
-    hapke_w = RegularGridInterpolator((hapkew_lat, hapkew_lon, marci_wavelengths), stacked_hapke_w)
+    hapke_w = RegularGridInterpolator((hapkew_lat, hapkew_lon, marci_wavelengths), stacked_hapke_w, bounds_error=False, fill_value=None)
 
     for counter, radiance in enumerate(radiance_files):
         rad = np.load(radiance)
