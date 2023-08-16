@@ -112,7 +112,7 @@ for orbit in range(3400, 3500):
     save_location = Path('/mnt/science/data/mars/maven/iuvs/retrievals')
 
     # Make the sol info
-    sol = apsis_file['apoapse/sol'][3453]
+    sol = apsis_file['apoapse/sol'][orbit]
 
     # Make the interpolation
     sza_grid = np.arange(8) * 10

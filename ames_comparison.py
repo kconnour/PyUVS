@@ -146,6 +146,8 @@ for orbit in range(3300, 3400):
 
     base_path = Path(f'/mnt/science/data/mars/maven/iuvs/retrievals/{orbit_block}')# Path(f'/mnt/science/data/mars/maven/iuvs/retrievals/{orbit_block}')
     files = sorted(base_path.glob(f'{orbit_code}*'))
+    if not files:
+        continue
     retrievals = np.vstack([np.load(f) for f in files])
     dust = retrievals[..., 0]
     ice = retrievals[..., 1]
@@ -165,7 +167,6 @@ for orbit in range(3300, 3400):
     alt = np.vstack([f['pixelgeometry'].data['pixel_corner_mrh_alt'][..., 4] for f in files])
     fov = np.concatenate([f['integration'].data['fov_deg'] for f in files])
     sn = swath_number(fov)
-
 
     def make_swath_grid(field_of_view: np.ndarray, sn: int,
                         n_positions: int, n_integrations: int) \
@@ -201,7 +202,7 @@ for orbit in range(3300, 3400):
 
     for swath in np.unique(sn):
         # Do this no matter if I'm plotting primary or angles
-        swath_inds = swath_number == swath
+        swath_inds = sn == swath
         n_integrations = np.sum(swath_inds)
         n_positions = dust.shape[1]
         x, y = make_swath_grid(fov[swath_inds], swath, n_positions, n_integrations)
@@ -283,13 +284,13 @@ for orbit in range(3300, 3400):
 
     for swath in np.unique(sn):
         # Plot the data from [180, 540)
-        lon[lon < 180] += 180
+        '''lon[lon < 180] += 180
         x, y = latlon_meshgrid(lat[swath==sn], lon[swath==sn], alt[swath==sn])
         ax[0, 1].pcolormesh(x, y, dust[swath==sn], vmin=0, vmax=dustvmax, cmap='cividis')
-        ax[1, 1].pcolormesh(x, y, ice[swath==sn], vmin=0, vmax=icevmax, cmap='viridis')
+        ax[1, 1].pcolormesh(x, y, ice[swath==sn], vmin=0, vmax=icevmax, cmap='viridis')'''
 
         # Plot the data from [-180, 180)
-        lon -= 360
+        #lon -= 360
         x, y = latlon_meshgrid(lat[swath == sn], lon[swath == sn], alt[swath == sn])
         cdax = ax[0, 1].pcolormesh(x, y, dust[swath==sn], vmin=0, vmax=dustvmax, cmap='cividis')
         ciax = ax[1, 1].pcolormesh(x, y, ice[swath==sn], vmin=0, vmax=icevmax, cmap='viridis')

@@ -182,7 +182,7 @@ def process_lut(a, sza, b, ea):
 
             for d, surface_pressure in enumerate(np.linspace(0.3, 13.3, 10)):
                 pressure = surface_pressure * 100 * np.exp(-z / 10)
-                colden = pyrt.column_density(pressure, temperature, z) / mu0
+                colden = pyrt.column_density(pressure, temperature, z)
                 rayleigh_co2 = pyrt.rayleigh_co2(colden, iuvs_wavelengths)
 
                 dust_profile = pyrt.conrath(altitude_midpoint, 1, 10, 0.01)
