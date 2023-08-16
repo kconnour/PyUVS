@@ -164,10 +164,10 @@ for orbit in range(3300, 3400):
     lon = np.vstack([f['pixelgeometry'].data['pixel_corner_lon'] for f in files])
     alt = np.vstack([f['pixelgeometry'].data['pixel_corner_mrh_alt'][..., 4] for f in files])
     fov = np.concatenate([f['integration'].data['fov_deg'] for f in files])
-    swath_number = swath_number(fov)
+    sn = swath_number(fov)
 
 
-    def make_swath_grid(field_of_view: np.ndarray, swath_number: int,
+    def make_swath_grid(field_of_view: np.ndarray, sn: int,
                         n_positions: int, n_integrations: int) \
             -> tuple[np.ndarray, np.ndarray]:
         """Make a swath grid of mirror angles and spatial bins.
@@ -189,8 +189,8 @@ for orbit in range(3300, 3400):
             The swath grid.
 
         """
-        slit_angles = np.linspace(angular_slit_width * swath_number,
-                                  angular_slit_width * (swath_number + 1),
+        slit_angles = np.linspace(angular_slit_width * sn,
+                                  angular_slit_width * (sn + 1),
                                   num=n_positions+1)
         mean_angle_difference = np.mean(np.diff(field_of_view))
         field_of_view = np.linspace(field_of_view[0] - mean_angle_difference / 2,
@@ -199,11 +199,12 @@ for orbit in range(3300, 3400):
         return np.meshgrid(slit_angles, field_of_view)
 
 
-    for swath in np.unique(swath_number):
+    for swath in np.unique(sn):
         # Do this no matter if I'm plotting primary or angles
         swath_inds = swath_number == swath
         n_integrations = np.sum(swath_inds)
-        x, y = make_swath_grid(fov[swath_inds], swath, 133, n_integrations)
+        n_positions = dust.shape[1]
+        x, y = make_swath_grid(fov[swath_inds], swath, n_positions, n_integrations)
         # APP flip
         #dax = ax[0, 0].pcolormesh(x, y, np.fliplr(dust[swath_inds]), linewidth=0, edgecolors='none', rasterized=True, vmin=0, vmax=dustvmax, cmap='cividis')
         #iax = ax[1, 0].pcolormesh(x, y, np.fliplr(ice[swath_inds]), linewidth=0, edgecolors='none', rasterized=True, vmin=0, vmax=icevmax, cmap='viridis')
@@ -215,14 +216,14 @@ for orbit in range(3300, 3400):
         #eax = ax[2, 0].pcolormesh(x, y, error[swath_inds], linewidth=0, edgecolors='none', rasterized=True, vmin=0, vmax=errorvmax, cmap='magma')
 
     ax[0, 0].set_title('Dust optical depth')
-    ax[0, 0].set_xlim(0, angular_slit_width * (swath_number[-1] + 1))
+    ax[0, 0].set_xlim(0, angular_slit_width * (sn[-1] + 1))
     ax[0, 0].set_ylim(minimum_mirror_angle * 2, maximum_mirror_angle * 2)
     ax[0, 0].set_xticks([])
     ax[0, 0].set_yticks([])
     ax[0, 0].set_facecolor('gray')
 
     ax[1, 0].set_title('Ice optical depth')
-    ax[1, 0].set_xlim(0, angular_slit_width * (swath_number[-1] + 1))
+    ax[1, 0].set_xlim(0, angular_slit_width * (sn[-1] + 1))
     ax[1, 0].set_ylim(minimum_mirror_angle * 2, maximum_mirror_angle * 2)
     ax[1, 0].set_xticks([])
     ax[1, 0].set_yticks([])
@@ -280,18 +281,18 @@ for orbit in range(3300, 3400):
         return X, Y
 
 
-    for swath in np.unique(swath_number):
+    for swath in np.unique(sn):
         # Plot the data from [180, 540)
         lon[lon < 180] += 180
-        x, y = latlon_meshgrid(lat[swath==swath_number], lon[swath==swath_number], alt[swath==swath_number])
-        ax[0, 1].pcolormesh(x, y, dust[swath==swath_number], vmin=0, vmax=dustvmax, cmap='cividis')
-        ax[1, 1].pcolormesh(x, y, ice[swath==swath_number], vmin=0, vmax=icevmax, cmap='viridis')
+        x, y = latlon_meshgrid(lat[swath==sn], lon[swath==sn], alt[swath==sn])
+        ax[0, 1].pcolormesh(x, y, dust[swath==sn], vmin=0, vmax=dustvmax, cmap='cividis')
+        ax[1, 1].pcolormesh(x, y, ice[swath==sn], vmin=0, vmax=icevmax, cmap='viridis')
 
         # Plot the data from [-180, 180)
         lon -= 360
-        x, y = latlon_meshgrid(lat[swath == swath_number], lon[swath == swath_number], alt[swath == swath_number])
-        cdax = ax[0, 1].pcolormesh(x, y, dust[swath==swath_number], vmin=0, vmax=dustvmax, cmap='cividis')
-        ciax = ax[1, 1].pcolormesh(x, y, ice[swath==swath_number], vmin=0, vmax=icevmax, cmap='viridis')
+        x, y = latlon_meshgrid(lat[swath == sn], lon[swath == sn], alt[swath == sn])
+        cdax = ax[0, 1].pcolormesh(x, y, dust[swath==sn], vmin=0, vmax=dustvmax, cmap='cividis')
+        ciax = ax[1, 1].pcolormesh(x, y, ice[swath==sn], vmin=0, vmax=icevmax, cmap='viridis')
         #ceax = ax[2, 1].pcolormesh(x, y, error[swath == swath_number], vmin=0, vmax=errorvmax, cmap='magma')
 
     '''divider = make_axes_locatable(ax[0, 1])
