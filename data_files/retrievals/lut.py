@@ -9,10 +9,10 @@ from astropy.io import fits
 import pyrt
 import disort
 
-iuvs_wavelengths = np.array([0.210, 0.215, 0.220, 0.272, 0.278, 0.284])
+iuvs_wavelengths = np.array([0.210, 0.215, 0.220, 0.272, 0.278, 0.284]) - 0.005
 z = np.linspace(100, 0, num=15)
 altitude_midpoint = (z[:-1] + z[1:]) / 2
-temperature = np.ones(15,) * 175
+temperature = np.ones(15,) * 170
 
 ################
 ## Define Radprop
@@ -134,14 +134,6 @@ n_streams = 8
 n_polar = 1  # defined by IUVS' viewing geometry
 n_azimuth = 1  # defined by IUVS' viewing geometry
 
-###############
-### Surface
-###############
-# Get Mike's Hapke w at the IUVS wavelengths for the LUT
-wolff_hapke = np.interp(iuvs_wavelengths, np.linspace(0.258, 0.32, num=100), np.linspace(0.07, 0.095, num=100))
-# I can't do any more here because the surface is a function of SZA, EA, and PA (or azimuth angle)
-clancy_lambert_albedo = np.interp(iuvs_wavelengths, np.linspace(0.2, 0.33, num=100), np.linspace(0.01, 0.015, num=100))
-
 ##############
 # Output arrays
 ##############
@@ -174,20 +166,31 @@ def process_lut(a, sza, b, ea):
         mu0 = np.cos(np.radians(sza))
         mu = np.cos(np.radians(ea))
 
-        # The surface part straight up gives nonsense when calling DISORT. I'm keeping it here because this is how I ought to do it,
-        #  but I'm not using it. I would do it... but there's no documentation of what these damn arrays are even supposed to be
-        #  so any attempts to debug would just be guesswork
         for cc, hapke_w in enumerate(np.arange(8)/100 + 0.05):
-            rhoq, rhou, emust, bemst, rho_accurate = pyrt.make_hapkeHG2roughness_surface(True, False, n_polar, n_azimuth, n_streams, mu, mu0, azimuth, 0, np.pi, 200, 1, 0.06, hapke_w, 0.26, 0.3, 15)
+            clancy_albedo = np.linspace(0.01, 0.015, num=100)
+            clancy_wavs = np.linspace(0.258, 0.32, num=100)
+            lambert_albedo = np.interp(iuvs_wavelengths, clancy_wavs, clancy_albedo)
 
-            for d, surface_pressure in enumerate(np.linspace(0.3, 13.3, 10)):
+            '''rhoq = pyrt.make_empty_rhoq(n_streams)
+            rhou = pyrt.make_empty_rhou(n_streams)
+            emust = pyrt.make_empty_emust(n_polar)
+            bemst = pyrt.make_empty_bemst(n_streams)
+            rho_accurate = pyrt.make_empty_rho_accurate(n_polar, n_azimuth)'''
+
+            rhoq, rhou, emust, bemst, rho_accurate = pyrt.make_hapkeHG2roughness_surface(True, False, n_polar, n_azimuth, n_streams, mu, mu0, azimuth, 0, np.pi, 200, 1, 0.06, hapke_w, 0.3, 0.7, 20)
+
+            #for d, surface_pressure in enumerate(np.linspace(0.3, 13.3, 10)):   TODO fix
+            for d, surface_pressure in enumerate(np.array([3.5])):
                 pressure = surface_pressure * 100 * np.exp(-z / 10)
                 colden = pyrt.column_density(pressure, temperature, z)
                 rayleigh_co2 = pyrt.rayleigh_co2(colden, iuvs_wavelengths)
 
+                print(np.sum(rayleigh_co2.optical_depth, axis=0))
+                raise SystemExit(9)
+
                 dust_profile = pyrt.conrath(altitude_midpoint, 1, 10, 0.01)
                 dust_profile = dust_profile / np.sum(dust_profile)
-                ice_profile = np.logical_and(25 <= altitude_midpoint, altitude_midpoint <= 50)
+                ice_profile = np.logical_and(20 <= altitude_midpoint, altitude_midpoint <= 30)
                 ice_profile = ice_profile / np.sum(ice_profile)
 
                 for e, dust_od in enumerate(np.arange(21) / 10):
@@ -235,14 +238,15 @@ def process_lut(a, sza, b, ea):
                                               atm.legendre_coefficients[:, :, g],
                                               temper, 1, 1, user_od_output,
                                               mu0, 0, mu, azimuth,
-                                              np.pi, 0, clancy_lambert_albedo[g], 0, 0, 1, 3400000, h_lyr,
+                                              np.pi, 0, lambert_albedo[g], 0, 0, 1, 3400000, h_lyr,
                                               rhoq, rhou, rho_accurate, bemst, emust,
                                               0, '', direct_beam_flux,
                                               diffuse_down_flux, diffuse_up_flux, flux_divergence,
                                               mean_intensity, intensity, albedo_medium,
-                                              transmissivity_medium, maxcmu=n_streams, maxulv=n_user_levels, maxmom=159)
+                                              transmissivity_medium, maxcmu=n_streams, maxulv=n_user_levels, maxmom=160)
 
                             lut[a, b, c, cc, d, e, f, g] = uu[0, 0, 0]
+                            #lut[a, b, c, d, e, f, g] = uu[0, 0, 0]
     return lut, a, b
 
 
@@ -254,13 +258,13 @@ def make_lut():
 
     for a, sza in enumerate(np.arange(8) * 10):
         for b, ea in enumerate(np.arange(8) * 10):
-            #process_lut(a, sza, b, ea)
-            pool.apply_async(func=process_lut, args=(a, sza, b, ea), callback=make_array)
+            process_lut(a, sza, b, ea)
+            #pool.apply_async(func=process_lut, args=(a, sza, b, ea), callback=make_array)
 
     # https://www.machinelearningplus.com/python/parallel-processing-python/
     pool.close()
     pool.join()  # I guess this postpones further code execution until the queue is finished
-    np.save(f'/home/kyle/lut-hapke.npy', lut0)
+    np.save(f'/home/kyle/iuvs/lut-throwback.npy', lut0)
 
 
 def make_array(input):

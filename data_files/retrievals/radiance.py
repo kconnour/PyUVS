@@ -104,8 +104,11 @@ class TSIS1(SolarFlux):
         #  spectral range I care about, the differences are so small that it's not worth the effort right now
         jd = Time(str(self.dt), format='iso').jd
         times = self.dataset['time'][:]
-        idx = np.abs(times - jd).argmin()
-        return self.dataset['irradiance'][idx, :]
+        default_idx = np.abs(times - jd).argmin()
+        # Most of the time I can just return the irradiance. But sometimes, the UV is all NaNs. Account for that case here
+        # by using the next time the instrument did in fact measure some data. This assumes all the UV is NaNs
+        next_valid_index = np.argmax(~np.isnan(self.dataset['irradiance'][default_idx:, 0]))   # This will return 0 if the index has valid data
+        return self.dataset['irradiance'][default_idx + next_valid_index, :]
 
     def _set_wavelengths(self):
         return self.dataset['wavelength'][:]
@@ -140,8 +143,8 @@ def make_radiance(orbit: int) -> None:
 
     # Read in apsis info
     apsis_file = File('/mnt/science/data_lake/mars/maven/apsis.hdf5')
-    mars_sun_distance = apsis_file['apoapse/mars_sun_distance'][orbit]
-    et = apsis_file['apoapse/ephemeris_time'][orbit]
+    mars_sun_distance = apsis_file['apoapse/mars_sun_distance'][orbit-1]
+    et = apsis_file['apoapse/ephemeris_time'][orbit-1]
 
     # Define the solar flux
     timestamp = (Time(2000, format='jyear') + TimeDelta(et * u.s)).iso
@@ -174,18 +177,20 @@ def make_radiance(orbit: int) -> None:
         voltage: float = hdul['observation'].data['mcp_volt'][0]
         voltage_gain: float = hdul['observation'].data['mcp_gain'][0]
 
+        # Get the wavelengths
+        # Read in Justin's wavelengths
+        wavelength_low = readsav(str(wavelength_files[file_number]))['wavelength_muv_lo']  # shape: (50, 20)
+        wavelength_high = readsav(str(wavelength_files[file_number]))['wavelength_muv_hi']  # shape: (50, 20)
+        wavelength_center = readsav(str(wavelength_files[file_number]))['wavelength_muv']  # shape: (50, 20)
+
         # Make variables for the brightness computation
         spatial_bin_edges = np.concatenate((spatial_bin_low, np.array([spatial_bin_high[-1]])))
         spectral_bin_edges = np.concatenate((spectral_bin_low, np.array([spectral_bin_high[-1]])))
 
         # Make the brightness
         brightness = make_brightness(dds, spatial_bin_edges, spectral_bin_edges, spatial_bin_width, spectral_bin_width,
-                                     integration_time, voltage, voltage_gain)
+                                     integration_time, voltage, voltage_gain, wavelength_center)
 
-        # Get the wavelengths
-        # Read in Justin's wavelengths
-        wavelength_low = readsav(str(wavelength_files[file_number]))['wavelength_muv_lo']  # shape: (50, 20)
-        wavelength_high = readsav(str(wavelength_files[file_number]))['wavelength_muv_hi']  # shape: (50, 20)
 
         # Make wavelength edges from these data. Note this is clunky and could probably be done in one line,
         #  but it's easiest for now to make an empty array and then populate
@@ -204,6 +209,7 @@ def make_radiance(orbit: int) -> None:
             # Integrate the solar flux
             integrated_flux = np.array([solar_flux.integrate_flux(pixel_edge_wavelengths[i], pixel_edge_wavelengths[i+1]) for i in range(len(pixel_edge_wavelengths)-1)])
             integrated_flux *= radius ** 2
+
             # Convolve the flux by the PSF and rebin to IUVS resolution
             convolved_flux = np.convolve(integrated_flux, psf, mode='same')
             edge_indices = spectral_bin_edges - spectral_bin_edges[0]
@@ -222,9 +228,9 @@ def make_radiance(orbit: int) -> None:
 if __name__ == '__main__':
     n_cpus = mp.cpu_count()  # = 8 for my old desktop, 12 for my laptop, 20 for my new desktop
     pool = mp.Pool(n_cpus - 2)  # save one/two just to be safe. Some say it's faster
-    for orb in range(10837, 17000):
+    for orb in range(3400, 3401):
         # NOTE: if there are any issues in the argument of apply_async, it'll break out of that and move on to the next iteration.
-        #make_radiance(orb)
-        pool.apply_async(make_radiance, args=(orb,))
+        make_radiance(orb)
+        #pool.apply_async(make_radiance, args=(orb,))
     pool.close()
     pool.join()

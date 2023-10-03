@@ -6,94 +6,16 @@ from tempfile import mkdtemp
 
 from astropy.io import fits
 from h5py import File
-from netCDF4 import Dataset
 import numpy as np
 from scipy.optimize import minimize
 from scipy.io import readsav
+from scipy.interpolate import RegularGridInterpolator
+
+from ames import Ames
 
 
 import disort
 import pyrt
-
-
-class Ames:
-    def __init__(self):
-        self._base_path = Path('/mnt/science/data_lake/mars/gcm/ames/my_generic')
-
-        self._fixed = Dataset(self._base_path / '05344.fixed.nc')
-        self._average = Dataset(self._base_path / '05344.atmos_average.nc')
-        self._diurnal = Dataset(self._base_path / '05344.atmos_diurn.nc')
-
-        self.latitude = self._fixed.variables['lat'][:]
-        self.longitude = self._fixed.variables['lon'][:]
-
-        self.dust_vprof = self._average.variables['dustref']  # shape: (year, pressure level, lat, lon)
-        #self.ice_vprof = self._average.variables['cldref']  # shape: (year, pressure level, lat, lon)
-
-        #self.pressure_levels = self._average.variables['pstd']  # shape: (pressure level,). Index 0 is TOA
-        self.surface_pressure = self._average.variables['ps']  # shape: (season, time of day, lat, lon)
-        self.surface_temperature = self._average.variables['ts']  # shape: (season, time of day, lat, lon)
-        self.temperature = self._average.variables['temp'][:]  # shape: (season, time of day, pressure level, lat, lon)
-        self.season = self._make_season()
-        self.local_time = self._diurnal.variables['time_of_day_24'][:]
-
-        self.ak = self._fixed.variables['ak'][:]
-        self.bk = self._fixed.variables['bk'][:]
-
-    def _make_season(self):
-        time = self._average.variables['time'][:]
-        delta = time[1] - time[0]
-        time -= delta / 2
-        time -= time[0]
-        return time
-
-    def get_seasonal_index(self, sol):
-        return np.argmin(np.abs(self.season - sol))
-
-    def get_latitude_index(self, lat: float):
-        return np.argmin(np.abs(self.latitude - lat))
-
-    def get_longitude_index(self, lon: float):
-        return np.argmin(np.abs(self.longitude - lon))
-
-    def get_local_time_index(self, lon: float, lt):
-        return np.argmin(np.abs(self.local_time - (lt - (lon / 360 * 24)) % 24))
-
-    def make_pressure(self):
-        return np.multiply.outer(self.surface_pressure, self.bk) + self.ak   # shape: (season, lat, lon, altitude)
-
-    def get_pixel_pressure(self, lat, lon, sol):
-        # Make the pressure and temperature vertical profiles from the surface
-        lat_idx = self.get_latitude_index(lat)
-        lon_idx = self.get_longitude_index(lon)
-        season_idx = self.get_seasonal_index(sol)
-        
-        surface_pressure = self.surface_pressure[season_idx, lat_idx, lon_idx]
-        return np.multiply.outer(surface_pressure, self.bk) + self.ak    # This is a huge performance improvement by not computing all the atmospheric pressures
-
-    def get_pixel_temperature(self, lat, lon, sol):
-        lat_idx = self.get_latitude_index(lat)
-        lon_idx = self.get_longitude_index(lon)
-        season_idx = self.get_seasonal_index(sol)
-
-        surface_temperature = self.surface_temperature[season_idx, lat_idx, lon_idx]
-
-        # Get where the surface index would be
-        surface_idx = np.argmin(~self.temperature.mask)
-
-        return np.insert(self.temperature[season_idx, :, lat_idx, lon_idx], surface_idx, surface_temperature)
-
-    def get_pixel_boundary_altitude(self, lat, lon, sol):
-        pressure = self.get_pixel_pressure(lat, lon, sol)
-        return -np.log(pressure / pressure[-1]) * 10
-
-    def get_dust_profile(self, lat, lon, sol):
-        lat_idx = self.get_latitude_index(lat)
-        lon_idx = self.get_longitude_index(lon)
-        season_idx = self.get_seasonal_index(sol)
-
-        return self._average.variables['dustref'][season_idx, :, lat_idx, lon_idx]
-
 
 class Radprop:
     def __init__(self):
@@ -233,11 +155,24 @@ def perform_retrieval(orbit: int):
     n_polar = 1  # defined by IUVS' viewing geometry
     n_azimuth = 1  # defined by IUVS' viewing geometry
 
+    # Get the surface phase function
+    marci_wavelengths = [0.260, 0.320]
+    w6 = fits.open('/mnt/science/data_lake/mars/band6_w.fits')
+    w7 = fits.open('/mnt/science/data_lake/mars/band7_w.fits')
+    w6 = np.roll(w6['primary'].data, 180, axis=1)
+    w7 = np.roll(w7['primary'].data, 180, axis=1)
+
+    hapkew_lat = np.linspace(-90, 90, num=180)
+    hapkew_lon = np.linspace(0, 360, num=360)
+
+    stacked_hapke_w = np.dstack([w6, w7])
+    hapke_w = RegularGridInterpolator((hapkew_lat, hapkew_lon, marci_wavelengths), stacked_hapke_w, bounds_error=False, fill_value=None)
+
     def process_file(fileno: int):
         print('start processing')
         hdul = fits.open(l1b_files[fileno])
         wavelengths = readsav(wavelength_files[fileno])['wavelength_muv'] / 1000  # convert to microns
-        radiance = np.load(radiance_files[fileno])
+        radiance = np.load(radiance_files[fileno]) * 24/22
 
         # Get the data from the l1b file
         pixelgeometry = hdul['pixelgeometry'].data
@@ -279,11 +214,19 @@ def perform_retrieval(orbit: int):
             # Get the nearest neighbor values of the lat/lon/lt values (for speed I'm not using linear interpolation)
             pixel_lat = latitude[integration, spatial_bin, 4]
             pixel_lon = longitude[integration, spatial_bin, 4]
-            
-            pixel_temperature = gcm.get_pixel_temperature(pixel_lat, pixel_lon, sol)
-            pixel_pressure = gcm.get_pixel_pressure(pixel_lat, pixel_lon, sol)
-            z = gcm.get_pixel_boundary_altitude(pixel_lat, pixel_lon, sol)
-            altitude_midpoint = (z[:-1] + z[1:]) / 2   # I think this is only used for the ice vprof
+            pixel_lt = local_time[integration, spatial_bin]
+
+            latitude_idx = gcm.get_nearest_latitude_index(pixel_lat)
+            longitude_idx = gcm.get_nearest_longitude_index(pixel_lon)
+            seasonal_idx = gcm.get_nearest_seasonal_index(sol)
+            lt_idx = gcm.get_nearest_local_time_index(pixel_lon, pixel_lt)
+
+            surface_temperature = gcm.surface_temperature[seasonal_idx, lt_idx, latitude_idx, longitude_idx]
+            pixel_temperature = np.insert(gcm.atmospheric_temperature[seasonal_idx, lt_idx, :, latitude_idx, longitude_idx], 0, surface_temperature)
+            surface_pressure = gcm.surface_pressure[seasonal_idx, lt_idx, latitude_idx, longitude_idx]
+            pixel_pressure = gcm.get_atmospheric_pressure(surface_pressure)
+            z = -np.log(pixel_pressure / pixel_pressure[-1]) * 10
+
             # Finally, use these to compute the column density in each "good" layer
             colden = pyrt.column_density(pixel_pressure, pixel_temperature, z)
 
@@ -292,37 +235,41 @@ def perform_retrieval(orbit: int):
             ##############
             rayleigh_co2 = pyrt.rayleigh_co2(colden, pixel_wavs)
 
+            # TODO this was just for testing LUT vs pixel-by-pixel
+            '''print(np.sum(rayleigh_co2.optical_depth, axis=0))
+            print(pixel_temperature)
+            print(pixel_pressure)
+            print(z)
+            raise SystemExit(9)'''
+
             ##############
             # Aerosol vertical profiles
             ##############
-            dust_vprof = gcm.get_dust_profile(pixel_lat, pixel_lon, sol)
+            dust_vprof = gcm.dust_vertical_profile[seasonal_idx, lt_idx, :, latitude_idx, longitude_idx]
             dust_vprof = dust_vprof / np.sum(dust_vprof)
 
-            # The simulation doesn't have clouds, so I need to make a vertical profile. I decided to make all clouds
-            #  a uniform layer 25 to 50 km above the surface defined by 610 Pa.
-            sfc_z = 10 * np.log(610 / pixel_pressure[-1])
-            new_z = altitude_midpoint + sfc_z
-            ice_vprof = np.logical_and(25 <= new_z, new_z <= 50)
+            ice_vprof = gcm.ice_vertical_profile[seasonal_idx, lt_idx, :, latitude_idx, longitude_idx]
             ice_vprof = ice_vprof / np.sum(ice_vprof)
 
             ##############
             # Surface
             ##############
             # Make empty arrays. These are fine to be empty with Lambert surfaces and they'll be filled with more complicated surfaces later on
-            bemst = np.zeros(int(0.5 * n_streams))
+            '''bemst = np.zeros(int(0.5 * n_streams))
             emust = np.zeros(n_polar)
             rho_accurate = np.zeros((n_polar, n_azimuth))
             rhoq = np.zeros((int(0.5 * n_streams), int(0.5 * n_streams + 1), n_streams))
-            rhou = np.zeros((n_streams, int(0.5 * n_streams + 1), n_streams))
+            rhou = np.zeros((n_streams, int(0.5 * n_streams + 1), n_streams))'''
+            pixel_hapke_w = hapke_w(np.array([pixel_lat, pixel_lon, 0.290]))[0]
+            rhoq, rhou, emust, bemst, rho_accurate = pyrt.make_hapkeHG2roughness_surface(True, False, n_polar, n_azimuth, n_streams, mu[integration, spatial_bin], mu0[integration, spatial_bin], azimuth[integration, spatial_bin], 0, np.pi, 200, 1, 0.06, pixel_hapke_w, 0.3, 0.7, 20)
 
             # Choose a consistent set of wavelengths for all retrievals
-            if len(pixel_wavs) == 20:
-                wavelength_indices = [1, -6]
-            elif len(pixel_wavs) == 19:
-                wavelength_indices = [1, -5]
-                #wavelength_indices = [1]
-            elif len(pixel_wavs) == 15:
-                wavelength_indices = [1, -1]
+            if radiance.shape[-1] == 20:
+                wavelength_indices = [1, 2, 3, -8, -7, -6]
+            elif radiance.shape[-1] == 19:
+                wavelength_indices = [1, 2, 3, -7, -6, -5]
+            elif radiance.shape[-1] == 15:
+                wavelength_indices = [1, 2, 3, -3, -2, -1]
 
             def simulate_tau(guess: np.ndarray) -> np.ndarray:
                 # print(f'guess = {guess}')
@@ -433,9 +380,10 @@ def perform_retrieval(orbit: int):
                 total_error = np.abs(radiance[integration, spatial_bin, wavelength_indices] - sim) / radiance[integration, spatial_bin, wavelength_indices]
                 error = np.sum(total_error) / len(total_error)  # This is the mean relative error
             '''
-            #print(f'data = {radiance[integration, spatial_bin, wavelength_indices]}')
-            #print(integration, spatial_bin, best_fit_od, error, sim, radiance[integration, spatial_bin, wavelength_indices])
-            #raise SystemExit(9)
+            print(f'data = {radiance[integration, spatial_bin, wavelength_indices]}')
+            print(f'sim = {sim}')
+            print(integration, spatial_bin, best_fit_od, error)
+            raise SystemExit(9)
             return integration, spatial_bin, best_fit_od, error, sim
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -470,12 +418,12 @@ def perform_retrieval(orbit: int):
         # NOTE: if there are any issues in the argument of apply_async (here,
         # retrieve_ssa), it'll break out of that and move on to the next iteration.
 
-        for integ in range(radiance.shape[0]):
-        #for integ in [0]:
-            #for posit in [84]:
-            for posit in range(radiance.shape[1]):
-                #retrieval(integ, posit)
-                pool.apply_async(func=retrieval, args=(integ, posit), callback=make_answer)
+        #for integ in range(radiance.shape[0]):
+        for integ in [120]:
+            for posit in [120]:
+            #for posit in range(radiance.shape[1]):
+                retrieval(integ, posit)
+                #pool.apply_async(func=retrieval, args=(integ, posit), callback=make_answer)
                 # print(f'starting integ {integ} and posti {posit}')
 
         # https://www.machinelearningplus.com/python/parallel-processing-python/
@@ -500,7 +448,7 @@ def perform_retrieval(orbit: int):
 if __name__ == '__main__':
     import time
     t0 = time.time()
-    for orb in range(3453, 3454):
+    for orb in range(3464, 3465):
         # NOTE: if there are any issues in the argument of apply_async, it'll break out of that and move on to the next iteration.
         perform_retrieval(orb)
     print(time.time() - t0)
