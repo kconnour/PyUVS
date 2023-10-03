@@ -20,7 +20,7 @@ for orbit in range(3464, 3465):
     block_code = 'orbit' + f'{block}'.zfill(5)
     orbit_code = 'orbit' + f'{orbit}'.zfill(5)
     # Read in external files
-    lut = np.load('/home/kyle/iuvs/lut-16streams.npy')
+    lut = np.load('/mnt/science/data_lake/mars/maven/iuvs/lut-16streams.npy')
     radiance_files = sorted(Path(f'/mnt/science/data/mars/maven/iuvs/radiance/{block_code}').glob(f'orbit*{orbit}*'))
     fits_files = sorted(Path(f'/mnt/science/data_lake/mars/maven/iuvs/production/{block_code}').glob(f'*apoapse*{orbit_code}*muv*.gz'))
     hduls = [fits.open(f) for f in fits_files]
