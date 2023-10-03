@@ -127,21 +127,21 @@ for orbit in range(3464, 3465):
             # Add the spectrum to the array
             answer[integration, spatial_bin, 2] = error
             answer[integration, spatial_bin, 3:] = sim_spec
-            print(answer[integration, spatial_bin, :2])
+            '''print(answer[integration, spatial_bin, :2])
             print(error)
             print(answer[integration, spatial_bin, :2])
             print(radiance[integration, spatial_bin, wavelength_indices])
             print(sim_spec)
             print(radiance[integration, spatial_bin, wavelength_indices] / sim_spec)
-            raise SystemExit(9)
+            raise SystemExit(9)'''
             return integration, spatial_bin, answer[integration, spatial_bin]
 
         n_cpus = mp.cpu_count()
-        pool = mp.Pool(n_cpus - 1)
-        for integration in [120]: # range(radiance.shape[0]):
-            for spatial_bin in [120]: #range(radiance.shape[1]):
-                #pool.apply_async(func=do_retrieval, args=(integration, spatial_bin), callback=make_array)
-                do_retrieval(integration, spatial_bin)
+        pool = mp.Pool(n_cpus)
+        for integration in range(radiance.shape[0]):
+            for spatial_bin in range(radiance.shape[1]):
+                pool.apply_async(func=do_retrieval, args=(integration, spatial_bin), callback=make_array)
+                #do_retrieval(integration, spatial_bin)
 
         # https://www.machinelearningplus.com/python/parallel-processing-python/
         pool.close()
