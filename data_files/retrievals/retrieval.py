@@ -168,6 +168,11 @@ def perform_retrieval(orbit: int):
     stacked_hapke_w = np.dstack([w6, w7])
     hapke_w = RegularGridInterpolator((hapkew_lat, hapkew_lon, marci_wavelengths), stacked_hapke_w, bounds_error=False, fill_value=None)
 
+    # Read in the topography
+    mola = np.load('/mnt/science/data_lake/mars/maps/mola-topography.npy')
+    mola_lat = np.linspace(90, -90, num=1440)
+    mola_lon = np.linspace(0, 360, num=2880)
+
     def process_file(fileno: int):
         print('start processing')
         hdul = fits.open(l1b_files[fileno])
@@ -203,11 +208,6 @@ def perform_retrieval(orbit: int):
 
             pixel_wavs = wavelengths[spatial_bin, :]
 
-            # Make the surface
-            clancy_albedo = np.linspace(0.015, 0.01, num=100)
-            clancy_wavelengths = np.linspace(0.2, 0.3, num=100)
-            albedo = np.interp(pixel_wavs, clancy_wavelengths, clancy_albedo)
-
             ##############
             # Equation of state
             ##############
@@ -227,20 +227,26 @@ def perform_retrieval(orbit: int):
             pixel_pressure = gcm.get_atmospheric_pressure(surface_pressure)
             z = -np.log(pixel_pressure / pixel_pressure[-1]) * 10
 
+            # Make the pressure scale factor
+            gcm_lat_idx = np.argmin(np.abs(mola_lat - gcm.latitude_bin_centers[latitude_idx]))
+            gcm_lon_idx = np.argmin(np.abs(mola_lon - gcm.longitude_bin_centers[longitude_idx]))
+            iuvs_lat_idx = np.argmin(np.abs(mola_lat - latitude[integration, spatial_bin, 4]))
+            iuvs_lon_idx = np.argmin(np.abs(mola_lon - longitude[integration, spatial_bin, 4]))
+            pressure_scale_factor = np.exp((mola[gcm_lat_idx, gcm_lon_idx] - mola[iuvs_lat_idx, iuvs_lon_idx]) / 10000)
+
             # Finally, use these to compute the column density in each "good" layer
-            colden = pyrt.column_density(pixel_pressure, pixel_temperature, z)
+            colden = pyrt.column_density(pixel_pressure * pressure_scale_factor, pixel_temperature, z)
+
+            ##############
+            # Aerosol guesses
+            ##############
+            gcm_dust = gcm.dust_visible_optical_depth[seasonal_idx, lt_idx, latitude_idx, longitude_idx]
+            gcm_ice = gcm.ice_visible_optical_depth[seasonal_idx, lt_idx, latitude_idx, longitude_idx]
 
             ##############
             # Rayleigh scattering
             ##############
             rayleigh_co2 = pyrt.rayleigh_co2(colden, pixel_wavs)
-
-            # TODO this was just for testing LUT vs pixel-by-pixel
-            '''print(np.sum(rayleigh_co2.optical_depth, axis=0))
-            print(pixel_temperature)
-            print(pixel_pressure)
-            print(z)
-            raise SystemExit(9)'''
 
             ##############
             # Aerosol vertical profiles
@@ -254,12 +260,6 @@ def perform_retrieval(orbit: int):
             ##############
             # Surface
             ##############
-            # Make empty arrays. These are fine to be empty with Lambert surfaces and they'll be filled with more complicated surfaces later on
-            '''bemst = np.zeros(int(0.5 * n_streams))
-            emust = np.zeros(n_polar)
-            rho_accurate = np.zeros((n_polar, n_azimuth))
-            rhoq = np.zeros((int(0.5 * n_streams), int(0.5 * n_streams + 1), n_streams))
-            rhou = np.zeros((n_streams, int(0.5 * n_streams + 1), n_streams))'''
             pixel_hapke_w = hapke_w(np.array([pixel_lat, pixel_lon, 0.290]))[0]
             rhoq, rhou, emust, bemst, rho_accurate = pyrt.make_hapkeHG2roughness_surface(True, False, n_polar, n_azimuth, n_streams, mu[integration, spatial_bin], mu0[integration, spatial_bin], azimuth[integration, spatial_bin], 0, np.pi, 200, 1, 0.06, pixel_hapke_w, 0.3, 0.7, 20)
 
@@ -298,6 +298,7 @@ def perform_retrieval(orbit: int):
                     dust_legendre = pyrt.regrid(dust_legendre_coefficients, dust_particle_sizes,
                                                 dust_wavelengths, dust_z_grad, pixel_wavs)
                     dust_column = pyrt.Column(dust_optical_depth, dust_single_scattering_albedo, dust_legendre)
+
                     ##############
                     # Ice FSP
                     ##############
@@ -350,7 +351,7 @@ def perform_retrieval(orbit: int):
                                       temper, 1, 1, user_od_output,
                                       mu0[integration, spatial_bin], 0,
                                       mu[integration, spatial_bin], azimuth[integration, spatial_bin],
-                                      np.pi, 0, albedo[wav_index], 0, 0, 1, 3400000, h_lyr,
+                                      np.pi, 0, 0.01, 0, 0, 1, 3400000, h_lyr,
                                       rhoq, rhou, rho_accurate, bemst, emust,
                                       0, '', direct_beam_flux,
                                       diffuse_down_flux, diffuse_up_flux, flux_divergence,
@@ -366,24 +367,15 @@ def perform_retrieval(orbit: int):
                       f'{guess}')'''
                 return np.sum((simulated_toa_reflectance - radiance[integration, spatial_bin, wavelength_indices]) ** 2)
 
-            fitted_optical_depth = minimize(find_best_fit, np.array([0.7, 0.2]), method='Nelder-Mead', tol=1e-2, bounds=((0, 2), (0, 1)), options={'adaptive': True}).x
+            fitted_optical_depth = minimize(find_best_fit, np.array([gcm_dust, gcm_ice]), method='Nelder-Mead', tol=1e-2, bounds=((0, 2), (0, 1))).x
             best_fit_od = np.array(fitted_optical_depth)
             sim = simulate_tau(best_fit_od)
-            # error = np.sum((reflectance[integration, spatial_bin, wavelength_indices] - sim)**2 / sim)
             total_error = np.abs(radiance[integration, spatial_bin, wavelength_indices] - sim) / radiance[integration, spatial_bin, wavelength_indices]
             error = np.sum(total_error) / len(total_error)  # This is the mean relative error
-            '''if error > 0.1:
-                fitted_optical_depth = minimize(find_best_fit, np.array([0.5, 0.1]), method='Nelder-Mead', tol=1e-2, bounds=((0, 2), (0, 1)), options={'adaptive': True}).x
-                best_fit_od = np.array(fitted_optical_depth)
-                sim = simulate_tau(best_fit_od)
-                # error = np.sum((reflectance[integration, spatial_bin, wavelength_indices] - sim)**2 / sim)
-                total_error = np.abs(radiance[integration, spatial_bin, wavelength_indices] - sim) / radiance[integration, spatial_bin, wavelength_indices]
-                error = np.sum(total_error) / len(total_error)  # This is the mean relative error
-            '''
-            print(f'data = {radiance[integration, spatial_bin, wavelength_indices]}')
+            '''print(f'data = {radiance[integration, spatial_bin, wavelength_indices]}')
             print(f'sim = {sim}')
             print(integration, spatial_bin, best_fit_od, error)
-            raise SystemExit(9)
+            raise SystemExit(9)'''
             return integration, spatial_bin, best_fit_od, error, sim
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -418,12 +410,10 @@ def perform_retrieval(orbit: int):
         # NOTE: if there are any issues in the argument of apply_async (here,
         # retrieve_ssa), it'll break out of that and move on to the next iteration.
 
-        #for integ in range(radiance.shape[0]):
-        for integ in [120]:
-            for posit in [120]:
-            #for posit in range(radiance.shape[1]):
-                retrieval(integ, posit)
-                #pool.apply_async(func=retrieval, args=(integ, posit), callback=make_answer)
+        for integ in range(radiance.shape[0]):
+            for posit in range(radiance.shape[1]):
+                #retrieval(integ, posit)
+                pool.apply_async(func=retrieval, args=(integ, posit), callback=make_answer)
                 # print(f'starting integ {integ} and posti {posit}')
 
         # https://www.machinelearningplus.com/python/parallel-processing-python/
@@ -439,8 +429,7 @@ def perform_retrieval(orbit: int):
         del retrieved_error
         del retrieved_radiance
 
-    #for file in range(len(l1b_files)):
-    for file in [5]:
+    for file in range(len(l1b_files)):
         print(f'starting file {file}')
         process_file(file)
 
