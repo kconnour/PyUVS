@@ -55,7 +55,7 @@ def _make_gain_correction(dark_subtracted, spatial_bin_width, spectral_bin_width
 
 def make_brightness(dark_subtracted: np.ndarray, spatial_bin_edges: np.ndarray, spectral_bin_edges: np.ndarray,
                     spatial_bin_width: int, spectral_bin_width: int, integration_time: np.ndarray,
-                    mcp_voltage: np.ndarray, mcp_voltage_gain: np.ndarray) -> np.ndarray:
+                    mcp_voltage: np.ndarray, mcp_voltage_gain: np.ndarray, wavelength_center: np.ndarray) -> np.ndarray:
     """This will make the calibrated brightness (kR) of a data file.
 
     Parameters
@@ -80,16 +80,24 @@ def make_brightness(dark_subtracted: np.ndarray, spatial_bin_edges: np.ndarray, 
             flatfield = _make_muv_flatfield(spatial_bin_edges, spectral_bin_edges)
 
             # The sensitivity curve is currently 512 elements. Make it (1024,) for simplicity
-            sensitivity_curve = np.load('/mnt/science/data_lake/mars/maven/iuvs/instrument/muv_sensitivity_curve_observational.npy')[1]
-            sensitivity_curve = np.repeat(sensitivity_curve, 2)
+            sensitivity_data = np.load('/mnt/science/data_lake/mars/maven/iuvs/instrument/muv_sensitivity_curve_observational.npy')
+            sensitivity_curve = sensitivity_data[1]
+            sensitivity_wavelengths = sensitivity_data[0]
+            #sensitivity_curve = np.repeat(sensitivity_curve, 2)
+
+            # TODO: I'm still unsure about the sensitivity curve. If I do it without the wavelengths, it's not spatial bin dependent but it seems smarter.
+            #  If I use Justin's wavelength centers, I get an answer that's (133, 19) instead of just (19,)
 
             # Get the sensitivity in each spectral bin
             # For array shape reasons, I spread this out over several lines
-            rebinned_sensitivity_curve = np.array([np.mean(sensitivity_curve[spectral_bin_edges[i]:spectral_bin_edges[i + 1]]) for i in range(spectral_bin_edges.shape[0] - 1)])
+            #rebinned_sensitivity_curve = np.array([np.mean(sensitivity_curve[spectral_bin_edges[i]:spectral_bin_edges[i + 1]]) for i in range(spectral_bin_edges.shape[0] - 1)])
+            rebinned_sensitivity_curve = np.interp(wavelength_center, sensitivity_wavelengths, sensitivity_curve)
             partial_corrected_brightness = dark_subtracted / rebinned_sensitivity_curve * 4 * np.pi * 10 ** -9 / pu.pixel_angular_size / spatial_bin_width / mcp_voltage_gain / integration_time
 
             # Finally, do the voltage gain and flatfield corrections
+            # Dividing a spatial bin by its width, is the brightness of a detector pixel---which corresponds to the pixel angular size
             voltage_correction = _make_gain_correction(dark_subtracted, spatial_bin_width, spectral_bin_width, integration_time, mcp_voltage, mcp_voltage_gain)
+            # TODO: I think this should be multiply by the gain correction, but the model says divide by the gain correction instead
             data = partial_corrected_brightness * voltage_correction / flatfield
 
             # If the data have negative DNs, then they become NaNs during the voltage correction

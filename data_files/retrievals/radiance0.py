@@ -61,7 +61,7 @@ class SolarFlux(metaclass=abc.ABCMeta):
 class Solstice(SolarFlux):
     def __init__(self, dt: datetime):
         self.dt = dt
-        self._base_path = Path('/mnt/science/data_lake/sun/solstice')
+        self._base_path = Path('/mnt/iuvs/data_lake/sun/solstice')
         self.dataset = self._load_dataset()
         self._irradiance = self._set_irradiance()
         self._wavelengths = self._set_wavelengths()
@@ -104,11 +104,8 @@ class TSIS1(SolarFlux):
         #  spectral range I care about, the differences are so small that it's not worth the effort right now
         jd = Time(str(self.dt), format='iso').jd
         times = self.dataset['time'][:]
-        default_idx = np.abs(times - jd).argmin()
-        # Most of the time I can just return the irradiance. But sometimes, the UV is all NaNs. Account for that case here
-        # by using the next time the instrument did in fact measure some data. This assumes all the UV is NaNs
-        next_valid_index = np.argmax(~np.isnan(self.dataset['irradiance'][default_idx:, 0]))   # This will return 0 if the index has valid data
-        return self.dataset['irradiance'][default_idx + next_valid_index, :]
+        idx = np.abs(times - jd).argmin()
+        return self.dataset['irradiance'][idx, :]
 
     def _set_wavelengths(self):
         return self.dataset['wavelength'][:]
@@ -130,9 +127,9 @@ def make_radiance(orbit: int) -> None:
     ### Start by defining stuff that I only have to do once per orbit
 
     # Define some paths
-    iuvs_data_location = Path('/mnt/science/data_lake/mars/maven/iuvs/production')
-    wavelength_location = Path('/mnt/science/data_lake/mars/maven/iuvs/apoapse_wavelengths')
-    save_location = Path('/mnt/science/data/mars/maven/iuvs/radiance')
+    iuvs_data_location = Path('/mnt/iuvs/data_lake/mars/maven/iuvs/production')
+    wavelength_location = Path('/mnt/iuvs/data_lake/mars/maven/iuvs/apoapse_wavelengths')
+    save_location = Path('/mnt/iuvs/data/mars/maven/iuvs/radiance')
 
     orbit_code = 'orbit' + f'{orbit}'.zfill(5)
     block_code = 'orbit' + f'{math.floor(orbit / 100) * 100}'.zfill(5)
@@ -142,7 +139,7 @@ def make_radiance(orbit: int) -> None:
     wavelength_files = sorted((wavelength_location / block_code).glob(f'*apoapse*{orbit_code}*muv*'))
 
     # Read in apsis info
-    apsis_file = File('/mnt/science/data_lake/mars/maven/apsis.hdf5')
+    apsis_file = File('/mnt/iuvs/data_lake/mars/maven/apsis.hdf5')
     mars_sun_distance = apsis_file['apoapse/mars_sun_distance'][orbit-1]
     et = apsis_file['apoapse/ephemeris_time'][orbit-1]
 
@@ -158,7 +155,7 @@ def make_radiance(orbit: int) -> None:
     radius = earth_sun_distance / mars_sun_distance
 
     # Load in the point spread function
-    psf = np.load('/mnt/science/data_lake/mars/maven/iuvs/instrument/muv_point_spread_function.npy')
+    psf = np.load('/mnt/iuvs/data_lake/mars/maven/iuvs/instrument/muv_point_spread_function.npy')
 
     for file_number in range(len(data_files)):
         print(f'file number {file_number}')
@@ -220,17 +217,24 @@ def make_radiance(orbit: int) -> None:
 
         # Save the reflectance
         fn = f'{file_number}'.zfill(2)
-        filename = save_location / block_code / f'{orbit_code}-{fn}.npy'
-        filename.parent.mkdir(parents=True, exist_ok=True)
+        filename = f'/home/kyle/iuvs/radiance_test/{fn}.npy'
         np.save(str(filename), radiance)
 
 
 if __name__ == '__main__':
-    n_cpus = mp.cpu_count()  # = 8 for my old desktop, 12 for my laptop, 20 for my new desktop
-    pool = mp.Pool(n_cpus - 2)  # save one/two just to be safe. Some say it's faster
-    for orb in [11304, 11310]:
-        # NOTE: if there are any issues in the argument of apply_async, it'll break out of that and move on to the next iteration.
-        #make_radiance(orb)
-        pool.apply_async(make_radiance, args=(orb,))
-    pool.close()
-    pool.join()
+    debug = False
+    if debug:
+        n_cpus = mp.cpu_count()  # = 8 for my old desktop, 12 for my laptop, 20 for my new desktop
+        pool = mp.Pool(n_cpus - 2)  # save one/two just to be safe. Some say it's faster
+        for orb in [3400]:
+            # NOTE: if there are any issues in the argument of apply_async, it'll break out of that and move on to the next iteration.
+            make_radiance(orb)
+            #pool.apply_async(make_radiance, args=(orb,))
+        pool.close()
+        pool.join()
+    else:
+        old = np.load('/media/kyle/Athena/iuvs/radiance/orbit03400/radiance-orbit03400-00.npy')
+        new = np.load('/home/kyle/iuvs/radiance_test/00.npy')
+
+        foo = old/new
+        print(np.nanmean(np.nanmean(foo, axis=0), axis=0))

@@ -3,6 +3,7 @@ from pathlib import Path
 import multiprocessing as mp
 import math
 from tempfile import mkdtemp
+import warnings
 
 from astropy.io import fits
 from h5py import File
@@ -173,6 +174,8 @@ def perform_retrieval(orbit: int):
     mola_lat = np.linspace(90, -90, num=1440)
     mola_lon = np.linspace(0, 360, num=2880)
 
+    # TODO remove: warnings.filterwarnings("error")
+
     def process_file(fileno: int):
         print('start processing')
         hdul = fits.open(l1b_files[fileno])
@@ -198,7 +201,7 @@ def perform_retrieval(orbit: int):
         global retrieval  # this makes the function global so multiprocessing can pickle it. Very strange...
 
         def retrieval(integration: int, spatial_bin: int):
-            print('start retrieval')
+            print(f'start retrieval {integration}, {spatial_bin}')
             # Exit if the pixel is not retrievable
             if solar_zenith_angle[integration, spatial_bin] >= 72 or \
                     emission_angle[integration, spatial_bin] >= 72 or \
@@ -235,7 +238,11 @@ def perform_retrieval(orbit: int):
             pressure_scale_factor = np.exp((mola[gcm_lat_idx, gcm_lon_idx] - mola[iuvs_lat_idx, iuvs_lon_idx]) / 10000)
 
             # Finally, use these to compute the column density in each "good" layer
-            colden = pyrt.column_density(pixel_pressure * pressure_scale_factor, pixel_temperature, z)
+            try:
+                colden = pyrt.column_density(pixel_pressure * pressure_scale_factor, pixel_temperature, z)
+            except:
+                print(f'problem at integration, sb = {integration}, {spatial_bin}')
+
 
             ##############
             # Aerosol guesses
@@ -372,10 +379,10 @@ def perform_retrieval(orbit: int):
             sim = simulate_tau(best_fit_od)
             total_error = np.abs(radiance[integration, spatial_bin, wavelength_indices] - sim) / radiance[integration, spatial_bin, wavelength_indices]
             error = np.sum(total_error) / len(total_error)  # This is the mean relative error
-            '''print(f'data = {radiance[integration, spatial_bin, wavelength_indices]}')
+            print(f'data = {radiance[integration, spatial_bin, wavelength_indices]}')
             print(f'sim = {sim}')
             print(integration, spatial_bin, best_fit_od, error)
-            raise SystemExit(9)'''
+            raise SystemExit(9)
             return integration, spatial_bin, best_fit_od, error, sim
 
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -410,10 +417,10 @@ def perform_retrieval(orbit: int):
         # NOTE: if there are any issues in the argument of apply_async (here,
         # retrieve_ssa), it'll break out of that and move on to the next iteration.
 
-        for integ in range(radiance.shape[0]):
-            for posit in range(radiance.shape[1]):
-                #retrieval(integ, posit)
-                pool.apply_async(func=retrieval, args=(integ, posit), callback=make_answer)
+        for integ in [14]:#range(radiance.shape[0]):
+            for posit in [132]:#range(radiance.shape[1]):
+                retrieval(integ, posit)
+                #pool.apply_async(func=retrieval, args=(integ, posit), callback=make_answer)
                 # print(f'starting integ {integ} and posti {posit}')
 
         # https://www.machinelearningplus.com/python/parallel-processing-python/

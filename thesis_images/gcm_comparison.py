@@ -116,6 +116,303 @@ class Ice(Radprop):
         self.hdul = fits.open(self._base_path / 'ice.fits.gz')
 
 
+def make_equidistant_spectral_cutoff_indices(n_spectral_bins: int) -> tuple[int, int]:
+    """Make indices such that the input spectral bins are in 3 equally spaced color channels.
+
+    Parameters
+    ----------
+    n_spectral_bins
+        The number of spectral bins.
+
+    Returns
+    -------
+    The blue-green and the green-red cutoff indices.
+
+    Examples
+    --------
+    Get the wavelength cutoffs for some common apoapse MUV spectral binning schemes.
+
+    >>> make_equidistant_spectral_cutoff_indices(15)
+    (5, 10)
+
+    >>> make_equidistant_spectral_cutoff_indices(19)
+    (6, 13)
+
+    >>> make_equidistant_spectral_cutoff_indices(20)
+    (7, 13)
+
+    """
+    blue_green_cutoff = round(n_spectral_bins / 3)
+    green_red_cutoff = round(n_spectral_bins * 2 / 3)
+    return blue_green_cutoff, green_red_cutoff
+
+
+def turn_detector_image_to_3_channels(image: np.ndarray) -> np.ndarray:
+    """Turn a detector image into 3 channels by coadding over the spectral dimension.
+
+    Parameters
+    ----------
+    image
+        The image to turn into 3 channels. This is assumed to be 3 dimensional and have a shape of (n_integrations,
+        n_spatial_bins, n_spectral_bins).
+
+    Returns
+    -------
+    A co-added image with shape (n_integrations, n_spatial_bins, 3).
+
+    """
+    n_spectral_bins = image.shape[2]
+    blue_green_cutoff, green_red_cutoff = make_equidistant_spectral_cutoff_indices(n_spectral_bins)
+
+    red = np.sum(image[..., green_red_cutoff:], axis=-1)
+    green = np.sum(image[..., blue_green_cutoff:green_red_cutoff], axis=-1)
+    blue = np.sum(image[..., :blue_green_cutoff], axis=-1)
+
+    return np.dstack([red, green, blue])
+
+
+def histogram_equalize_grayscale_image(image: np.ndarray, mask: np.ndarray = None) -> np.ndarray:
+    """Histogram equalize a grayscale image.
+
+    Parameters
+    ----------
+    image
+        The image to histogram equalize. This is assumed to be 2-dimensional (2 spatial dimensions) but can have any
+        dimensionality.
+    mask
+        A mask of booleans where :code:`False` values are excluded from the histogram equalization scaling. This must
+        have the same shape as :code:`image`.
+
+    Returns
+    -------
+    A histogram equalized array with the same shape as the inputs with values ranging from 0 to 255.
+
+    See Also
+    --------
+    histogram_equalize_rgb_image: Histogram equalize a 3-color-channel image.
+
+    Notes
+    -----
+    I could not get the scikit-learn algorithm to work so I created this.
+    The algorithm works like this:
+
+    1. Sort all data used in the coloring.
+    2. Use these sorted values to determine the 256 left bin cutoffs.
+    3. Linearly interpolate each value in the grid over 256 RGB values and the
+       corresponding data values.
+    4. Take the floor of the interpolated values since I'm using left cutoffs.
+
+    """
+    sorted_values = np.sort(image[mask], axis=None)
+    left_cutoffs = np.array([sorted_values[int(i / 256 * len(sorted_values))]
+                             for i in range(256)])
+    rgb = np.linspace(0, 255, num=256)
+    return np.floor(np.interp(image, left_cutoffs, rgb))
+
+
+def histogram_equalize_rgb_image(image: np.ndarray, mask: np.ndarray = None) -> np.ndarray:
+    """Histogram equalize an RGB image.
+
+    Parameters
+    ----------
+    image
+        The image to histogram equalize. This is assumed to be 3-dimensional (the first 2 being spatial and the last
+        being spectral). The last dimension as assumed to have a length of 3. Indices 0, 1, and 2 correspond to R, G,
+        and B, respectively.
+    mask
+        A mask of booleans where :code:`False` values are excluded from the histogram equalization scaling. This must
+        have the same shape as the first N-1 dimensions of :code:`image`.
+
+    Returns
+    -------
+    A histogram equalized array with the same shape as the inputs with values ranging from 0 to 255.
+
+    See Also
+    --------
+    histogram_equalize_grayscale_image: Histogram equalize a single-color-channel image.
+
+    """
+    red = histogram_equalize_grayscale_image(image[..., 0], mask=mask)
+    green = histogram_equalize_grayscale_image(image[..., 1], mask=mask)
+    blue = histogram_equalize_grayscale_image(image[..., 2], mask=mask)
+    return np.dstack([red, green, blue])
+
+
+def histogram_equalize_detector_image(image: np.ndarray, mask: np.ndarray = None) -> np.ndarray:
+    """Histogram equalize a detector image.
+
+    Parameters
+    ----------
+    image
+        The image to histogram equalize. This is assumed to be 3-dimensional (the first 2 being spatial and the last
+        being spectral).
+    mask
+        A mask of booleans where :code:`False` values are excluded from the histogram equalization scaling. This must
+        have the same shape as the first N-1 dimensions of :code:`image`.
+
+    Returns
+    -------
+    Histogram equalized IUVS image, where the output array has a shape of (M, N, 3).
+
+    """
+    coadded_image = turn_detector_image_to_3_channels(image)
+    return histogram_equalize_rgb_image(coadded_image, mask=mask)
+
+def pcolormesh_rgb_detector_image(axis: plt.Axes, image: np.ndarray, x: np.ndarray, y: np.ndarray) -> None:
+    """pcolormesh an rgb detector image in a given axis.
+
+    Parameters
+    ----------
+    axis: plt.Axes
+        The axis to place the detector image into.
+    image: np.ndarray
+        An MxNx3 (rgb) or MxNx4 (rgba) array of colors.
+    x: np.ndarray
+        The horizontal grid of pixel corners.
+    y: np.ndarray
+        The vertical grid of pixel corners.
+
+    Returns
+    -------
+    None
+
+    See Also
+    --------
+    pcolormesh_detector_image: pcolormesh a single-channel detector image.
+
+    """
+    axis.pcolormesh(x, y, image, linewidth=0, edgecolors='none', rasterized=True)
+
+
+def add_terminator_contour_line_to_axis(axis: plt.Axes, solar_zenith_angle: np.ndarray, swath_number: np.ndarray,
+                                        field_of_view: np.ndarray, angular_size: float, app_flip: bool) -> None:
+    """Add terminator contour line to an axis.
+
+    Parameters
+    ----------
+    axis
+    solar_zenith_angle
+    swath_number
+    field_of_view
+    angular_size
+    app_flip
+
+    Returns
+    -------
+
+    """
+    n_spatial_bins = solar_zenith_angle.shape[1]
+    spatial_bin_centers = np.arange(n_spatial_bins) + 0.5
+
+    for swath in np.unique(swath_number):
+        swath_indices = swath_number == swath
+        # orbit 4361 required this
+        if np.sum(swath_indices) < 2:
+            continue
+        sza = solar_zenith_angle[swath_indices]
+        sza = np.fliplr(sza) if app_flip else sza
+        axis.contour((spatial_bin_centers / n_spatial_bins + swath) * angular_size, field_of_view[swath_indices],
+                     sza, [72], colors='red', linewidths=0.5)
+
+
+def _make_spatial_bin_angular_edges(angular_size: float, swath_number: int, n_spatial_bins: int) -> np.ndarray:
+    """Make the edges of each spatial bin such that they fit into a given angular size
+
+    Parameters
+    ----------
+    angular_size
+    swath_number
+    n_spatial_bins
+
+    Returns
+    -------
+
+    """
+    return np.linspace(angular_size * swath_number, angular_size * (swath_number + 1), num=n_spatial_bins+1)
+
+
+def _make_field_of_view_edges(field_of_view) -> np.ndarray:
+    """Make the edges of the field of view
+
+    Parameters
+    ----------
+    field_of_view
+
+    Returns
+    -------
+
+    Notes
+    -----
+    The field of view may not necessarily increase at a constant rate so this isn't rigorous. This also assumes all
+    pixels are contiguous
+
+    """
+    n_integrations = field_of_view.size
+    # orbit 4361 requires this check
+    if n_integrations == 1:
+        return np.linspace(field_of_view[0], field_of_view[0], num=2)
+    mean_angle_difference = np.mean(np.diff(field_of_view))
+    field_of_view_edges = np.linspace(field_of_view[0] - mean_angle_difference / 2,
+                                     field_of_view[-1] + mean_angle_difference / 2,
+                                     num=n_integrations + 1)
+    return field_of_view_edges
+
+
+def make_swath_grid(field_of_view: np.ndarray, n_spatial_bins: int, swath_number: int, angular_size: float) \
+        -> tuple[np.ndarray, np.ndarray]:
+    """Make a swath grid of mirror angles and spatial bins.
+
+    Parameters
+    ----------
+    field_of_view
+        The instrument's field of view.
+    swath_number
+        The swath number.
+    n_spatial_bins
+        The number of spatial bins.
+    angular_size
+        The angular size of one horizontal element. This is likely the angular detector width or the angular size of the
+        observation, but can be any value.
+
+    Returns
+    -------
+    tuple[np.ndarray, np.ndarray]
+        The swath grid.
+
+    """
+    spatial_bin_angular_edges = _make_spatial_bin_angular_edges(angular_size, swath_number, n_spatial_bins)
+    field_of_view_edges = _make_field_of_view_edges(field_of_view)
+    return np.meshgrid(spatial_bin_angular_edges, field_of_view_edges)
+
+
+def plot_rgb_detector_image_in_axis(axis: plt.Axes, image: np.ndarray, swath_number: np.ndarray,
+                                    field_of_view: np.ndarray, angular_size: float, app_flip: bool) -> None:
+    """Plot an rgb detector image in a given axis.
+
+    Parameters
+    ----------
+    axis
+    image
+    swath_number
+    field_of_view
+    angular_size
+    app_flip
+
+    Returns
+    -------
+
+    """
+    n_spatial_bins = image.shape[1]
+    for swath in np.unique(swath_number):
+        swath_indices = swath_number == swath
+        fov = field_of_view[swath_indices]
+        x, y = make_swath_grid(fov, n_spatial_bins, swath, angular_size)
+        rgb_image = image[swath_indices]
+        rgb_image = np.fliplr(rgb_image) if app_flip else rgb_image
+        pcolormesh_rgb_detector_image(axis, rgb_image, x, y)
+
+
+
 cbar_props = {
     'aspect': 10,
     'pad': 0.01
@@ -242,9 +539,11 @@ def process_image(orbit: int):
         gs = ax[1, 2].get_gridspec()
         for axs in ax[:4, 0]:
             axs.remove()
-        #biglygridspec = gridspec.
-        axbig0 = fig.add_subplot(gs[:2, 0])
-        axbig1 = fig.add_subplot(gs[2:, 0])
+        biglygridspec = gridspec.GridSpecFromSubplotSpec(3, 1, subplot_spec=gs[:, 0])
+        axbig0 = fig.add_subplot(biglygridspec[0])
+        axbig1 = fig.add_subplot(biglygridspec[1])
+        axbig2 = fig.add_subplot(biglygridspec[2])
+
         axbig1.sharex(axbig0)
         axbig0.tick_params(labelbottom=False)
         for row in range(4):
@@ -292,7 +591,6 @@ def process_image(orbit: int):
         h5file = File(file_path / orbit_block / f'{orbit_code}.hdf5')
         app_flip = h5file['apoapse/instrument_geometry/app_flip'][0]
 
-
         base_path = Path(f'/mnt/science/data/mars/maven/iuvs/retrievals/{orbit_block}')  # Path(f'/mnt/science/data/mars/maven/iuvs/retrievals/{orbit_block}')
         files = sorted(base_path.glob(f'*{orbit_code}*'))
         if not files:
@@ -311,8 +609,6 @@ def process_image(orbit: int):
         lon = np.vstack([f['pixelgeometry'].data['pixel_corner_lon'] for f in files if f['primary'].data.shape[1] != 33])
         alt = np.vstack([f['pixelgeometry'].data['pixel_corner_mrh_alt'][..., 4] for f in files if f['primary'].data.shape[1] != 33])
         fov = np.concatenate([f['integration'].data['fov_deg'] for f in files if f['primary'].data.shape[1] != 33])
-        sn = swath_number(fov)
-
 
         def make_swath_grid(field_of_view: np.ndarray, sn: int,
                             n_positions: int, n_integrations: int) \
@@ -345,10 +641,38 @@ def process_image(orbit: int):
                                         num=n_integrations + 1)
             return np.meshgrid(slit_angles, field_of_view)
 
+        oldfile = File(file_path / orbit_block / f'{orbit_code}.hdf5')
+        dayside = oldfile['apoapse/muv/integration/dayside_integrations'][:]
+        opportunity_swaths = oldfile['apoapse/integration/opportunity_classification'][:]
+        dayside_science_integrations = np.logical_and(dayside, ~opportunity_swaths)
+        brightness = oldfile['apoapse/muv/dayside/detector/brightness'][~opportunity_swaths[dayside]]
+        sn = oldfile['apoapse/integration/swath_number'][:][dayside_science_integrations]
+        n_swaths = oldfile['apoapse/integration/number_of_swaths'][:][0]
+        tangent_altitude = oldfile['apoapse/muv/dayside/spatial_bin_geometry/tangent_altitude'][:][..., 4]
+        field_of_view = oldfile['apoapse/integration/field_of_view'][:][dayside_science_integrations]
+        solar_zenith_angle = oldfile['apoapse/muv/dayside/spatial_bin_geometry/solar_zenith_angle'][:]
+        spatial_bin_edges = oldfile['apoapse/muv/dayside/binning/spatial_bin_edges'][:]
+        app_flip = oldfile['apoapse/instrument_geometry/app_flip'][0]
+        solar_zenith_angle[tangent_altitude != 0] = np.nan
+        mask = np.logical_and(tangent_altitude == 0, solar_zenith_angle <= 102)
+        image = histogram_equalize_detector_image(brightness, mask=mask) / 255
+        angular_width = (spatial_bin_edges[-1] - spatial_bin_edges[0]) / 1024 * 19.8 / 99.5 * 180 / np.pi
 
-        for swath in np.unique(sn):
+        plot_rgb_detector_image_in_axis(axbig2, image, sn, field_of_view, angular_width, app_flip)
+        add_terminator_contour_line_to_axis(axbig2, solar_zenith_angle, sn, field_of_view, angular_width, app_flip)
+        axbig2.set_xlim(0, angular_width * n_swaths)
+        axbig2.set_ylim(30.2508544921875 * 2, 59.6502685546875 * 2) if app_flip \
+            else axbig2.set_ylim(59.6502685546875 * 2, 30.2508544921875 * 2)
+        axbig2.set_xticks([])
+        axbig2.set_yticks([])
+        axbig2.set_facecolor('gray')
+        axbig2.set_title('Quicklook')
+
+        sn0 = swath_number(fov)
+
+        for swath in np.unique(sn0):
             # Do this no matter if I'm plotting primary or angles
-            swath_inds = sn == swath
+            swath_inds = sn0 == swath
             n_integrations = np.sum(swath_inds)
             n_positions = dust.shape[1]
             x, y = make_swath_grid(fov[swath_inds], swath, n_positions, n_integrations)
@@ -357,23 +681,24 @@ def process_image(orbit: int):
             # iax = ax[1, 0].pcolormesh(x, y, np.fliplr(ice[swath_inds]), linewidth=0, edgecolors='none', rasterized=True, vmin=0, vmax=icevmax, cmap='viridis')
             # eax = ax[2, 0].pcolormesh(x, y, np.fliplr(error[swath_inds]), linewidth=0, edgecolors='none', rasterized=True, vmin=0, vmax=errorvmax, cmap='magma')
 
-            # No APP flip
             dusttoplot = dust[swath_inds] if not app_flip else np.fliplr(dust[swath_inds])
             icetoplot = ice[swath_inds] if not app_flip else np.fliplr(ice[swath_inds])
             axbig0.pcolormesh(x, y, dusttoplot, linewidth=0, edgecolors='none', rasterized=True, vmin=0, vmax=dustvmax, cmap=dustcmap)
             axbig1.pcolormesh(x, y, icetoplot, linewidth=0, edgecolors='none', rasterized=True, vmin=0, vmax=icevmax, cmap=icecmap)
 
         axbig0.set_title('Dust optical depth')
-        axbig0.set_xlim(0, angular_slit_width * (sn[-1] + 1))
-        axbig0.set_ylim(minimum_mirror_angle * 2, maximum_mirror_angle * 2)
+        axbig0.set_xlim(0, angular_slit_width * (sn0[-1] + 1))
+        axbig0.set_ylim(30.2508544921875 * 2, 59.6502685546875 * 2) if app_flip \
+            else axbig0.set_ylim(59.6502685546875 * 2, 30.2508544921875 * 2)
         axbig0.set_xticks([])
         axbig0.set_yticks([])
         axbig0.set_facecolor('gray')
         axbig0.set_aspect('equal')
 
         axbig1.set_title('Ice optical depth')
-        axbig1.set_xlim(0, angular_slit_width * (sn[-1] + 1))
-        axbig1.set_ylim(minimum_mirror_angle * 2, maximum_mirror_angle * 2)
+        axbig1.set_xlim(0, angular_slit_width * (sn0[-1] + 1))
+        axbig1.set_ylim(30.2508544921875 * 2, 59.6502685546875 * 2) if app_flip \
+            else axbig1.set_ylim(59.6502685546875 * 2, 30.2508544921875 * 2)
         axbig1.set_xticks([])
         axbig1.set_yticks([])
         axbig1.set_facecolor('gray')
@@ -562,7 +887,7 @@ def process_image(orbit: int):
 if __name__ == '__main__':
     n_cpus = mp.cpu_count()
     pool = mp.Pool(n_cpus - 5)
-    for orb in range(3400, 3401):
+    for orb in range(7646, 9500):
         #pool.apply_async(func=process_image, args=(orb,))
         process_image(orb)
 

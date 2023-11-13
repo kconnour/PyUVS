@@ -63,7 +63,7 @@ where :math:`s` is the spatial slit length and :math:`f` is the telescope
 focal length.
 """
 
-pixel_length: float = 22 / 1024
+pixel_length: float = 24 / 1024
 """Length of an IUVS detector pixel [mm].
 
 Notes
@@ -71,6 +71,7 @@ Notes
 This values is derived from figure 11 of the IUVS paper, where the pixel length
 is simply the length of the detector divided into 1024 pixels.
 """
+# For some reason I thought this was 22 instead of 24... double check that
 
 pixel_angular_size: float = pixel_length / telescope_focal_length * \
                             spatial_slit_thickness / telescope_focal_length
