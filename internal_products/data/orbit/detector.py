@@ -1,10 +1,11 @@
-from h5py import File, Group
+from h5py import Group
 
 from compression import compression, compression_opts
 from data import hdulist, make_detector_raw, make_detector_dark_subtracted, \
     make_brightness, make_spatial_bin_edges, make_spatial_bin_width, \
     make_spectral_bin_edges, make_spectral_bin_width, make_integration_time, \
-    make_mcp_voltage, make_mcp_voltage_gain
+    make_mcp_voltage, make_mcp_voltage_gain, make_random_uncertainty_dn, \
+    make_random_uncertainty_physical
 import units
 
 
@@ -47,3 +48,21 @@ def add_brightness_to_file(group: Group, hduls: list[hdulist]) -> None:
         compression=compression,
         compression_opts=compression_opts)
     dataset.attrs['unit'] = units.brightness
+
+
+def add_random_uncertainty_dn_to_file(group: Group, hduls: list[hdulist]) -> None:
+    dataset = group.create_dataset(
+        'random_uncertainty_dn',
+        data=make_random_uncertainty_dn(hduls),
+        compression=compression,
+        compression_opts=compression_opts)
+    dataset.attrs['unit'] = units.data_number
+
+
+def add_random_uncertainty_physical_to_file(group: Group, hduls: list[hdulist]) -> None:
+    dataset = group.create_dataset(
+        'random_uncertainty_physical',
+        data=make_random_uncertainty_physical(hduls),
+        compression=compression,
+        compression_opts=compression_opts)
+    dataset.attrs['unit'] = units.brightness + '/nm'
