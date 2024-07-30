@@ -5,6 +5,7 @@ import mars_time as mt
 import numpy as np
 import spiceypy
 
+from internal_products.data import units
 import paths
 import angle
 import kernels
@@ -55,7 +56,7 @@ if __name__ == '__main__':
 
         # Add ephemeris times
         dataset = apsis.create_dataset('ephemeris_time', data=ephemeris_times)
-        dataset.attrs['unit'] = 'Seconds since J2000'
+        dataset.attrs['unit'] = units.ephemeris_time
 
         # Add orbits
         apsis.create_dataset('orbit', data=orbits)
@@ -65,50 +66,50 @@ if __name__ == '__main__':
 
         # Add sols
         dataset = apsis.create_dataset('sol', data=sols)
-        dataset.attrs['unit'] = 'Day of the Martian year'
+        dataset.attrs['unit'] = units.sol
 
         # Add solar longitudes
         dataset = apsis.create_dataset('solar_longitude', data=solar_longitude)
-        dataset.attrs['unit'] = 'Degrees'
+        dataset.attrs['unit'] = units.solar_longitude
 
         # Add sub-solar latitudes
         dataset = apsis.create_dataset('subsolar_latitude', data=subsolar_latitude)
-        dataset.attrs['unit'] = 'Degrees [N]'
+        dataset.attrs['unit'] = units.latitude
 
         # Add sub-solar longitudes
         dataset = apsis.create_dataset('subsolar_longitude', data=subsolar_longitude)
-        dataset.attrs['unit'] = 'Degrees [E]'
+        dataset.attrs['unit'] = units.longitude
 
         # Add sub-spacecraft latitudes
         dataset = apsis.create_dataset('subspacecraft_latitude', data=subspacecraft_latitude)
-        dataset.attrs['unit'] = 'Degrees [N]'
+        dataset.attrs['unit'] = units.latitude
 
         # Add sub-spacecraft longitudes
         dataset = apsis.create_dataset('subspacecraft_longitude', data=subspacecraft_longitude)
-        dataset.attrs['unit'] = 'Degrees [E]'
+        dataset.attrs['unit'] = units.longitude
 
         # Add spacecraft altitudes
         dataset = apsis.create_dataset('spacecraft_altitude', data=spacecraft_altitude)
-        dataset.attrs['unit'] = 'km'
+        dataset.attrs['unit'] = units.distance
 
         # Add subspacecraft local times
         dataset = apsis.create_dataset('subspacecraft_local_time', data=subspacecraft_local_time)
-        dataset.attrs['unit'] = 'hours'
+        dataset.attrs['unit'] = units.local_time
 
         # Add Mars-sun distances
         dataset = apsis.create_dataset('mars_sun_distance', data=mars_sun_distance)
-        dataset.attrs['unit'] = 'km'
+        dataset.attrs['unit'] = units.distance
 
         # Add sub-solar sub-spacecraft angles
         dataset = apsis.create_dataset('subsolar_subspacecraft_angle', data=subsolar_subspacecraft_angle)
-        dataset.attrs['unit'] = 'Degrees'
+        dataset.attrs['unit'] = units.angle
 
         # Add Mars position vectors
-        dataset = apsis.create_dataset('mars_vector', data=mars_vector)
-        dataset.attrs['unit'] = 'km'
+        dataset = apsis.create_dataset('mars_position', data=mars_vector)
+        dataset.attrs['unit'] = units.distance
 
         # Add Mars velocity vectors
         dataset = apsis.create_dataset('mars_velocity', data=mars_velocity)
-        dataset.attrs['unit'] = 'km/s'
+        dataset.attrs['unit'] = units.velocity
 
     file.close()

@@ -5,7 +5,7 @@ import datetime
 
 import spiceypy
 
-import pyuvs as pu
+from paths import spice_kernel_location
 
 
 def furnish_app_kernels() -> None:
@@ -16,7 +16,7 @@ def furnish_app_kernels() -> None:
     None
 
     """
-    kernel_location = pu.spice_kernel_location / 'ck'
+    kernel_location = spice_kernel_location / 'ck'
     app_kernels = sorted(kernel_location.glob('mvn_sc_rel*.bc'))
     for kernel in app_kernels:
         spiceypy.furnsh(str(kernel))
@@ -30,7 +30,7 @@ def furnish_iuvs_mirror_kernels() -> None:
     None
 
     """
-    kernel_location = pu.spice_kernel_location / 'ck'
+    kernel_location = spice_kernel_location / 'ck'
     mirror_kernels = sorted(kernel_location.glob('mvn_iuvs_rem*.bc'))
     for kernel in mirror_kernels:
         spiceypy.furnsh(str(kernel))
@@ -44,7 +44,7 @@ def furnish_maven_orientation_kernels() -> None:
     None
 
     """
-    kernel_location = pu.spice_kernel_location / 'ck'
+    kernel_location = spice_kernel_location / 'ck'
     sc_kernels = sorted(kernel_location.glob('mvn_sc_rel*.bc'))
     for kernel in sc_kernels:
         spiceypy.furnsh(str(kernel))
@@ -59,7 +59,7 @@ def furnish_maven_frame_kernel() -> None:
     None
 
     """
-    kernel = pu.spice_kernel_location / 'fk' / 'maven_v11.tf'
+    kernel = spice_kernel_location / 'fk' / 'maven_v11.tf'
     spiceypy.furnsh(str(kernel))
 
 
@@ -71,7 +71,7 @@ def furnish_maven_instrument_kernels() -> None:
     None
 
     """
-    kernel_location = pu.spice_kernel_location / 'ik'
+    kernel_location = spice_kernel_location / 'ik'
     instrument_kernels = sorted(kernel_location.glob('maven*.ti'))
     for kernel in instrument_kernels:
         spiceypy.furnsh(str(kernel))
@@ -85,7 +85,7 @@ def furnish_leap_second_kernel() -> None:
     None
 
     """
-    kernel = pu.spice_kernel_location / 'lsk' / 'naif0012.tls'
+    kernel = spice_kernel_location / 'lsk' / 'naif0012.tls'
     spiceypy.furnsh(str(kernel))
 
 
@@ -97,7 +97,7 @@ def furnish_planetary_constants_kernel() -> None:
     None
 
     """
-    kernel = pu.spice_kernel_location / 'pck' / 'pck00010.tpc'
+    kernel = spice_kernel_location / 'pck' / 'pck00010.tpc'
     spiceypy.furnsh(str(kernel))
 
 
@@ -109,7 +109,7 @@ def furnish_maven_clock_kernels() -> None:
     None
 
     """
-    location = pu.spice_kernel_location / 'sclk'
+    location = spice_kernel_location / 'sclk'
     clock_kernels = sorted(location.glob('mvn_sclkscet*.tsc'))
     for kernel in clock_kernels:
         spiceypy.furnsh(str(kernel))
@@ -123,7 +123,7 @@ def furnish_maven_orbit_kernels() -> None:
     None
 
     """
-    location = pu.spice_kernel_location / 'spk'
+    location = spice_kernel_location / 'spk'
     orbit_kernels = sorted(location.glob('maven_orb_rec*.bsp'))
     for kernel in orbit_kernels:
         spiceypy.furnsh(str(kernel))
@@ -137,7 +137,7 @@ def furnish_mars_kernel() -> None:
     None
 
     """
-    kernel = pu.spice_kernel_location / 'spk' / 'mar097s.bsp'
+    kernel = spice_kernel_location / 'spk' / 'mar097s.bsp'
     spiceypy.furnsh(str(kernel))
 
 
@@ -150,7 +150,7 @@ def get_datetime_of_earliest_maven_orbit_kernel() -> datetime.datetime:
         The datetime of the earliest orbit kernel.
 
     """
-    location = pu.spice_kernel_location / 'spk'
+    location = spice_kernel_location / 'spk'
     orbit_kernels = sorted(location.glob('maven_orb_rec*.bsp'))
     kernel_name = orbit_kernels[-0].name
     end_date = kernel_name.split('_')[-3]
@@ -170,7 +170,7 @@ def get_datetime_of_latest_maven_orbit_kernel() -> datetime.datetime:
         The datetime of the most recent orbit kernel.
 
     """
-    location = pu.spice_kernel_location / 'spk'
+    location = spice_kernel_location / 'spk'
     orbit_kernels = sorted(location.glob('maven_orb_rec*.bsp'))
     kernel_name = orbit_kernels[-1].name
     end_date = kernel_name.split('_')[-2]
