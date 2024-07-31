@@ -1,42 +1,42 @@
-from h5py import Group
+from astropy.io import fits
+import numpy as np
 
-from compression import compression, compression_opts
-from data import hdulist, make_spatial_bin_edges, make_spatial_bin_width, \
-    make_spectral_bin_edges, make_spectral_bin_width
-import units
+hdulist = fits.hdu.hdulist.HDUList
 
 
-def add_spatial_bin_edges_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'spatial_bin_edges',
-        data=make_spatial_bin_edges(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.bin_number
+def make_spatial_bin_edges(hduls: list[hdulist]) -> np.ndarray:
+    if not hduls:
+        return np.array([])
+    spatial_pixel_low = np.array([np.squeeze(f['binning'].data['spapixlo']) for f in hduls])
+    spatial_pixel_high = np.array([np.squeeze(f['binning'].data['spapixhi']) for f in hduls])
+    if not np.all(spatial_pixel_low == spatial_pixel_low[0]) or not np.all(spatial_pixel_high == spatial_pixel_high[0]):
+        raise ValueError('The spatial binning is not the same.')
+    return np.append(spatial_pixel_low[0], spatial_pixel_high[0, -1] + 1)
 
 
-def add_spatial_bin_width_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'spatial_bin_width',
-        data=make_spatial_bin_width(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.bins
+def make_spectral_bin_edges(hduls: list[hdulist]) -> np.ndarray:
+    if not hduls:
+        return np.array([])
+    spectral_pixel_low = np.array([np.squeeze(f['binning'].data['spepixlo']) for f in hduls])
+    spectral_pixel_high = np.array([np.squeeze(f['binning'].data['spepixhi']) for f in hduls])
+    if not np.all(spectral_pixel_low == spectral_pixel_low[0]) or not np.all(spectral_pixel_high == spectral_pixel_high[0]):
+        raise ValueError('The spectral binning is not the same.')
+    return np.append(spectral_pixel_low[0], spectral_pixel_high[0, -1] + 1)
 
 
-def add_spectral_bin_edges_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'spectral_bin_edges',
-        data=make_spectral_bin_edges(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.bin_number
+def make_spatial_bin_width(hduls: list[hdulist]) -> np.ndarray:
+    if not hduls:
+        return np.array([])
+    bin_size = np.array([f['primary'].header['spa_size'] for f in hduls])
+    if not np.all(bin_size == bin_size[0]):
+        raise ValueError('The spatial bin width is not the same.')
+    return np.array([bin_size[0]])
 
 
-def add_spectral_bin_width_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'spectral_bin_width',
-        data=make_spectral_bin_width(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.bins
+def make_spectral_bin_width(hduls: list[hdulist]) -> np.ndarray:
+    if not hduls:
+        return np.array([])
+    bin_size = np.array([f['primary'].header['spe_size'] for f in hduls])
+    if not np.all(bin_size == bin_size[0]):
+        raise ValueError('The spectral bin width is not the same.')
+    return np.array([bin_size[0]])

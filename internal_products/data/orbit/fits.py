@@ -5,7 +5,9 @@ from astropy.io import fits
 import numpy as np
 
 import pyuvs as pu
-from data import hdulist
+
+
+hdulist = fits.hdu.hdulist.HDUList
 
 
 def get_segment_orbit_channel_fits_file_paths(iuvs_fits_file_location: Path, segment: str, orbit: int, channel: str) -> list[Path]:

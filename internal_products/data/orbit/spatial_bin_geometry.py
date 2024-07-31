@@ -1,127 +1,82 @@
-from h5py import Group
+from astropy.io import fits
+import numpy as np
 
-from compression import compression, compression_opts
-from data import hdulist, make_spatial_bin_latitude, \
-    make_spatial_bin_longitude, make_spatial_bin_tangent_altitude, \
-    make_spatial_bin_tangent_altitude_rate, make_spatial_bin_line_of_sight, \
-    make_spatial_bin_solar_zenith_angle, make_spatial_bin_emission_angle, \
-    make_spatial_bin_phase_angle, make_spatial_bin_zenith_angle, \
-    make_spatial_bin_local_time, make_spatial_bin_right_ascension, \
-    make_spatial_bin_declination, make_spatial_bin_vector
-import units
+hdulist = fits.hdu.hdulist.HDUList
 
 
-def add_latitude_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'latitude',
-        data=make_spatial_bin_latitude(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.latitude
+def add_leading_axis_if_necessary(data: np.ndarray, expected_axes: int) -> np.ndarray:
+    """Add a leading axis to an array such that it has the expected number of axes.
+
+    Parameters
+    ----------
+    data: np.ndarray
+        Any array
+    expected_axes
+        The expected number of axes the array should have
+
+    Returns
+    -------
+    np.ndarray
+       The original data with an empty, leading axis added if necessary
+
+    Notes
+    -----
+    I assume the IUVS data can only be smaller than the expected number of
+    dimensions by up to one dimension.
+
+    """
+    return data if np.ndim(data) == expected_axes else data[None, :]
 
 
-def add_longitude_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'longitude',
-        data=make_spatial_bin_longitude(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.longitude
+def make_spatial_bin_latitude(hduls: list[hdulist]) -> np.ndarray:
+    return np.concatenate([add_leading_axis_if_necessary(f['pixelgeometry'].data['pixel_corner_lat'], 3) for f in hduls]) if hduls else np.array([])
 
 
-def add_tangent_altitude_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'tangent_altitude',
-        data=make_spatial_bin_tangent_altitude(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.altitude
+def make_spatial_bin_longitude(hduls: list[hdulist]) -> np.ndarray:
+    return np.concatenate([add_leading_axis_if_necessary(f['pixelgeometry'].data['pixel_corner_lon'], 3) for f in hduls]) if hduls else np.array([])
 
 
-def add_tangent_altitude_rate_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'tangent_altitude_rate',
-        data=make_spatial_bin_tangent_altitude_rate(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.velocity
+def make_spatial_bin_tangent_altitude(hduls: list[hdulist]) -> np.ndarray:
+    return np.concatenate([add_leading_axis_if_necessary(f['pixelgeometry'].data['pixel_corner_mrh_alt'], 3) for f in hduls]) if hduls else np.array([])
 
 
-def add_line_of_sight_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'line_of_sight',
-        data=make_spatial_bin_line_of_sight(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
+def make_spatial_bin_tangent_altitude_rate(hduls: list[hdulist]) -> np.ndarray:
+    return np.concatenate([add_leading_axis_if_necessary(f['pixelgeometry'].data['pixel_corner_mrh_alt_rate'], 3) for f in hduls]) if hduls else np.array([])
 
 
-def add_solar_zenith_angle_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'solar_zenith_angle',
-        data=make_spatial_bin_solar_zenith_angle(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.angle
+def make_spatial_bin_line_of_sight(hduls: list[hdulist]) -> np.ndarray:
+    return np.concatenate([add_leading_axis_if_necessary(f['pixelgeometry'].data['pixel_corner_los'], 3) for f in hduls]) if hduls else np.array([])
 
 
-def add_emission_angle_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'emission_angle',
-        data=make_spatial_bin_emission_angle(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.angle
+def make_spatial_bin_solar_zenith_angle(hduls: list[hdulist]) -> np.ndarray:
+    return np.concatenate([add_leading_axis_if_necessary(f['pixelgeometry'].data['pixel_solar_zenith_angle'], 2) for f in hduls]) if hduls else np.array([])
 
 
-def add_phase_angle_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'phase_angle',
-        data=make_spatial_bin_phase_angle(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.angle
+def make_spatial_bin_emission_angle(hduls: list[hdulist]) -> np.ndarray:
+    return np.concatenate([add_leading_axis_if_necessary(f['pixelgeometry'].data['pixel_emission_angle'], 2) for f in hduls]) if hduls else np.array([])
 
 
-def add_zenith_angle_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'zenith_angle',
-        data=make_spatial_bin_zenith_angle(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.angle
+def make_spatial_bin_phase_angle(hduls: list[hdulist]) -> np.ndarray:
+    return np.concatenate([add_leading_axis_if_necessary(f['pixelgeometry'].data['pixel_phase_angle'], 2) for f in hduls]) if hduls else np.array([])
 
 
-def add_local_time_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'local_time',
-        data=make_spatial_bin_local_time(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.local_time
+def make_spatial_bin_zenith_angle(hduls: list[hdulist]) -> np.ndarray:
+    return np.concatenate([add_leading_axis_if_necessary(f['pixelgeometry'].data['pixel_zenith_angle'], 2) for f in hduls]) if hduls else np.array([])
 
 
-def add_right_ascension_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'right_ascension',
-        data=make_spatial_bin_right_ascension(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.angle
+def make_spatial_bin_local_time(hduls: list[hdulist]) -> np.ndarray:
+    return np.concatenate([add_leading_axis_if_necessary(f['pixelgeometry'].data['pixel_local_time'], 2) for f in hduls]) if hduls else np.array([])
 
 
-def add_declination_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'declination',
-        data=make_spatial_bin_declination(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.angle
+def make_spatial_bin_right_ascension(hduls: list[hdulist]) -> np.ndarray:
+    return np.concatenate([add_leading_axis_if_necessary(f['pixelgeometry'].data['pixel_corner_ra'], 3) for f in hduls]) if hduls else np.array([])
 
 
-def add_bin_vector_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'bin_vector',
-        data=make_spatial_bin_vector(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.unit_vector
+def make_spatial_bin_declination(hduls: list[hdulist]) -> np.ndarray:
+    return np.concatenate([add_leading_axis_if_necessary(f['pixelgeometry'].data['pixel_corner_dec'], 3) for f in hduls]) if hduls else np.array([])
+
+
+def make_spatial_bin_vector(hduls: list[hdulist]) -> np.ndarray:
+    # original shape: (n_integrations, 3, spatial_bins, 5)
+    # new shape: (n_integrations, n_spatial_bins, 5, 3)
+    return np.moveaxis(np.concatenate([add_leading_axis_if_necessary(f['pixelgeometry'].data['pixel_vec'], 4) for f in hduls]), 1, -1) if hduls else np.array([])

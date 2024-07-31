@@ -25,6 +25,23 @@ def make_data_file(orbit: int) -> None:
                 # Get data from this to work with. For FUV/MUV independent data, just choose either channel
                 apoapse_hduls = fits.get_apoapse_muv_hduls(orbit, iuvs_fits_files_location)
 
+                # Add apsis datasets to file
+                apoapse_apsis = apoapse_group.create_group('apsis')
+                apoapse.apsis.add_ephemeris_time_to_file(apoapse_apsis, orbit)
+                apoapse.apsis.add_mars_year_to_file(apoapse_apsis, orbit)
+                apoapse.apsis.add_sol_to_file(apoapse_apsis, orbit)
+                apoapse.apsis.add_solar_longitude_to_file(apoapse_apsis, orbit)
+                apoapse.apsis.add_subsolar_latitude_to_file(apoapse_apsis, orbit)
+                apoapse.apsis.add_subsolar_longitude_to_file(apoapse_apsis, orbit)
+                apoapse.apsis.add_subspacecraft_latitude_to_file(apoapse_apsis, orbit)
+                apoapse.apsis.add_subspacecraft_longitude_to_file(apoapse_apsis, orbit)
+                apoapse.apsis.add_spacecraft_altitude_to_file(apoapse_apsis, orbit)
+                apoapse.apsis.add_subspacecraft_local_time_to_file(apoapse_apsis, orbit)
+                apoapse.apsis.add_mars_sun_distance_to_file(apoapse_apsis, orbit)
+                apoapse.apsis.add_subsolar_subspacecraft_angle_to_file(apoapse_apsis, orbit)
+                apoapse.apsis.add_mars_position_to_file(apoapse_apsis, orbit)
+                apoapse.apsis.add_mars_velocity_to_file(apoapse_apsis, orbit)
+
                 # Add integration datasets to file
                 apoapse_integration = apoapse_group.create_group('integration')
                 apoapse.integration.add_ephemeris_time_to_file(apoapse_integration, apoapse_hduls)
@@ -49,11 +66,11 @@ def make_data_file(orbit: int) -> None:
                     match frame:
                         case 'iau_mars':
                             apoapse_spacecraft_geometry_iau_mars = apoapse_spacecraft_geometry.create_group('iau_mars_frame')
-                            apoapse.spacecraft_geometry.iau_mars.add_spacecraft_vector_to_file(apoapse_spacecraft_geometry_iau_mars, apoapse_hduls)
+                            apoapse.spacecraft_geometry.iau_mars.add_spacecraft_position_to_file(apoapse_spacecraft_geometry_iau_mars, apoapse_hduls)
                             apoapse.spacecraft_geometry.iau_mars.add_spacecraft_velocity_to_file(apoapse_spacecraft_geometry_iau_mars, apoapse_hduls)
                         case 'inertial':
                             apoapse_spacecraft_geometry_inertial = apoapse_spacecraft_geometry.create_group('inertial_frame')
-                            apoapse.spacecraft_geometry.inertial.add_spacecraft_vector_to_file(apoapse_spacecraft_geometry_inertial, apoapse_hduls)
+                            apoapse.spacecraft_geometry.inertial.add_spacecraft_position_to_file(apoapse_spacecraft_geometry_inertial, apoapse_hduls)
                             apoapse.spacecraft_geometry.inertial.add_spacecraft_velocity_to_file(apoapse_spacecraft_geometry_inertial, apoapse_hduls)
 
                 # Add instrument geometry datasets to file
@@ -74,7 +91,6 @@ def make_data_file(orbit: int) -> None:
                             apoapse.instrument_geometry.inertial.add_instrument_y_field_of_view_to_file(apoapse_instrument_geometry_inertial, apoapse_hduls)
                             apoapse.instrument_geometry.inertial.add_instrument_z_field_of_view_to_file(apoapse_instrument_geometry_inertial, apoapse_hduls)
 
-                raise SystemExit(9)
                 for channel in ['muv']:
                     match channel:
                         case 'muv':
@@ -124,10 +140,10 @@ def make_data_file(orbit: int) -> None:
                                         apoapse.muv.failsafe.spatial_bin_geometry.add_bin_vector_to_file(apoapse_muv_failsafe_spatial_bin_geoemtry, apoapse_muv_failsafe_hduls)
 
                                         # Add detector datasets to file
-                                        '''apoapse_muv_failsafe_detector = apoapse_muv_failsafe.create_group('detector')
-                                        detector.add_raw_to_file(apoapse_muv_failsafe_detector, apoapse_muv_failsafe_hduls)
-                                        detector.add_dark_subtracted_to_file(apoapse_muv_failsafe_detector, apoapse_muv_failsafe_hduls)
-                                        detector.add_brightness_to_file(apoapse_muv_failsafe_detector, apoapse_muv_failsafe_hduls)'''
+                                        apoapse_muv_failsafe_detector = apoapse_muv_failsafe.create_group('detector')
+                                        apoapse.muv.failsafe.detector.add_random_uncertainty_dn_to_file(apoapse_muv_failsafe_detector, apoapse_muv_failsafe_hduls)
+                                        apoapse.muv.failsafe.detector.add_random_uncertainty_physical_to_file(apoapse_muv_failsafe_detector, apoapse_muv_failsafe_hduls)
+                                        apoapse.muv.failsafe.detector.add_brightness_to_file(apoapse_muv_failsafe_detector, apoapse_muv_failsafe_hduls)
 
                                     case 'dayside':
                                         apoapse_muv_dayside = apoapse_muv.create_group('dayside')
@@ -159,10 +175,10 @@ def make_data_file(orbit: int) -> None:
                                         apoapse.muv.dayside.spatial_bin_geometry.add_bin_vector_to_file(apoapse_muv_dayside_spatial_bin_geometry, apoapse_muv_dayside_hduls)
 
                                         # Add detector datasets to file
-                                        '''apoapse_muv_dayside_detector = apoapse_muv_dayside.create_group('detector')
-                                        detector.add_raw_to_file(apoapse_muv_dayside_detector, apoapse_muv_dayside_hduls)
-                                        detector.add_dark_subtracted_to_file(apoapse_muv_dayside_detector, apoapse_muv_dayside_hduls)
-                                        detector.add_brightness_to_file(apoapse_muv_dayside_detector, apoapse_muv_dayside_hduls)'''
+                                        apoapse_muv_dayside_detector = apoapse_muv_dayside.create_group('detector')
+                                        apoapse.muv.dayside.detector.add_random_uncertainty_dn_to_file(apoapse_muv_dayside_detector, apoapse_muv_dayside_hduls)
+                                        apoapse.muv.dayside.detector.add_random_uncertainty_physical_to_file(apoapse_muv_dayside_detector, apoapse_muv_dayside_hduls)
+                                        apoapse.muv.dayside.detector.add_brightness_to_file(apoapse_muv_dayside_detector, apoapse_muv_dayside_hduls)
 
                                     case 'nightside':
                                         apoapse_muv_nightside = apoapse_muv.create_group('nightside')
@@ -194,10 +210,11 @@ def make_data_file(orbit: int) -> None:
                                         apoapse.muv.nightside.spatial_bin_geometry.add_bin_vector_to_file(apoapse_muv_nightside_spatial_bin_geoemtry, apoapse_muv_nightside_hduls)
 
                                         # Add detector datasets to file
-                                        '''apoapse_muv_nightside_detector = apoapse_muv_nightside.create_group('detector')
-                                        detector.add_raw_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)
-                                        detector.add_dark_subtracted_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)
-                                        detector.add_brightness_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)'''
+                                        apoapse_muv_nightside_detector = apoapse_muv_nightside.create_group('detector')
+                                        apoapse.muv.dayside.detector.add_random_uncertainty_dn_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)
+                                        apoapse.muv.dayside.detector.add_random_uncertainty_physical_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)
+                                        apoapse.muv.dayside.detector.add_brightness_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)
+    file.close()
 
 
 if __name__ == '__main__':
