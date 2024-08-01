@@ -213,8 +213,12 @@ def make_data_file(orbit: int) -> None:
                                         apoapse.muv.nightside.detector.add_random_uncertainty_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)
                                         apoapse.muv.nightside.detector.add_systematic_uncertainty_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)
                                         apoapse.muv.nightside.detector.add_brightness_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)
+
+                                        # Add species datasets to file (all at once, since they're computed all at once)
+                                        apoapse_muv_nightside_species = apoapse_muv_nightside.create_group('species')
+                                        apoapse.muv.nightside.species.add_mlr_fits_to_file(apoapse_muv_nightside_species, apoapse_muv_nightside_hduls)
     file.close()
 
 
 if __name__ == '__main__':
-    make_data_file(4000)
+    make_data_file(5726)
