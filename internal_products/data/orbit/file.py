@@ -45,7 +45,6 @@ def make_data_file(orbit: int) -> None:
                 # Add integration datasets to file
                 apoapse_integration = apoapse_group.create_group('integration')
                 apoapse.integration.add_ephemeris_time_to_file(apoapse_integration, apoapse_hduls)
-                apoapse.integration.add_mirror_data_number_to_file(apoapse_integration, apoapse_hduls)
                 apoapse.integration.add_mirror_angle_to_file(apoapse_integration, apoapse_hduls)
                 apoapse.integration.add_field_of_view_to_file(apoapse_integration, apoapse_hduls)
                 apoapse.integration.add_case_temperature_to_file(apoapse_integration, apoapse_hduls)
@@ -141,8 +140,8 @@ def make_data_file(orbit: int) -> None:
 
                                         # Add detector datasets to file
                                         apoapse_muv_failsafe_detector = apoapse_muv_failsafe.create_group('detector')
-                                        apoapse.muv.failsafe.detector.add_random_uncertainty_dn_to_file(apoapse_muv_failsafe_detector, apoapse_muv_failsafe_hduls)
-                                        apoapse.muv.failsafe.detector.add_random_uncertainty_physical_to_file(apoapse_muv_failsafe_detector, apoapse_muv_failsafe_hduls)
+                                        apoapse.muv.failsafe.detector.add_random_uncertainty_to_file(apoapse_muv_failsafe_detector, apoapse_muv_failsafe_hduls)
+                                        apoapse.muv.failsafe.detector.add_systematic_uncertainty_to_file(apoapse_muv_failsafe_detector, apoapse_muv_failsafe_hduls)
                                         apoapse.muv.failsafe.detector.add_brightness_to_file(apoapse_muv_failsafe_detector, apoapse_muv_failsafe_hduls)
 
                                     case 'dayside':
@@ -176,8 +175,8 @@ def make_data_file(orbit: int) -> None:
 
                                         # Add detector datasets to file
                                         apoapse_muv_dayside_detector = apoapse_muv_dayside.create_group('detector')
-                                        apoapse.muv.dayside.detector.add_random_uncertainty_dn_to_file(apoapse_muv_dayside_detector, apoapse_muv_dayside_hduls)
-                                        apoapse.muv.dayside.detector.add_random_uncertainty_physical_to_file(apoapse_muv_dayside_detector, apoapse_muv_dayside_hduls)
+                                        apoapse.muv.dayside.detector.add_random_uncertainty_to_file(apoapse_muv_dayside_detector, apoapse_muv_dayside_hduls)
+                                        apoapse.muv.dayside.detector.add_systematic_uncertainty_to_file(apoapse_muv_dayside_detector, apoapse_muv_dayside_hduls)
                                         apoapse.muv.dayside.detector.add_brightness_to_file(apoapse_muv_dayside_detector, apoapse_muv_dayside_hduls)
 
                                     case 'nightside':
@@ -211,9 +210,9 @@ def make_data_file(orbit: int) -> None:
 
                                         # Add detector datasets to file
                                         apoapse_muv_nightside_detector = apoapse_muv_nightside.create_group('detector')
-                                        apoapse.muv.dayside.detector.add_random_uncertainty_dn_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)
-                                        apoapse.muv.dayside.detector.add_random_uncertainty_physical_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)
-                                        apoapse.muv.dayside.detector.add_brightness_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)
+                                        apoapse.muv.nightside.detector.add_random_uncertainty_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)
+                                        apoapse.muv.nightside.detector.add_systematic_uncertainty_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)
+                                        apoapse.muv.nightside.detector.add_brightness_to_file(apoapse_muv_nightside_detector, apoapse_muv_nightside_hduls)
     file.close()
 
 

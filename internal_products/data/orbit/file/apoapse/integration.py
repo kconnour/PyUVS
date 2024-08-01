@@ -3,7 +3,7 @@ from h5py import Group
 
 from internal_products.data import units
 from internal_products.data.orbit.integration import make_ephemeris_time, \
-    make_mirror_data_number, make_mirror_angle, make_field_of_view, \
+    make_mirror_angle, make_field_of_view, \
     make_case_temperature, make_integration_time, make_apoapse_swath_number, \
     make_apoapse_number_of_swaths, make_apoapse_opportunity_classification
 from internal_products.data.orbit.file.compression import compression, \
@@ -20,15 +20,6 @@ def add_ephemeris_time_to_file(group: Group, hduls: list[hdulist]) -> None:
         compression=compression,
         compression_opts=compression_opts)
     dataset.attrs['unit'] = units.ephemeris_time
-
-
-def add_mirror_data_number_to_file(group: Group, hduls: list[hdulist]) -> None:
-    dataset = group.create_dataset(
-        'mirror_data_number',
-        data=make_mirror_data_number(hduls),
-        compression=compression,
-        compression_opts=compression_opts)
-    dataset.attrs['unit'] = units.data_number
 
 
 def add_mirror_angle_to_file(group: Group, hduls: list[hdulist]) -> None:

@@ -14,12 +14,6 @@ def make_ephemeris_time(hduls: list[hdulist]) -> np.ndarray:
     ) if hduls else np.array([])
 
 
-def make_mirror_data_number(hduls: list[hdulist]) -> np.ndarray:
-    return np.concatenate(
-        [f['integration'].data['mirror_dn'] for f in hduls]
-    ) if hduls else np.array([])
-
-
 def make_mirror_angle(hduls: list[hdulist]) -> np.ndarray:
     return np.concatenate(
         [f['integration'].data['mirror_deg'] for f in hduls]
