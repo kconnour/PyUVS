@@ -154,3 +154,68 @@ def histogram_equalize_detector_image(image: np.ndarray, mask: np.ndarray = None
     """
     coadded_image = turn_detector_image_to_3_channels(image)
     return histogram_equalize_rgb_image(coadded_image, mask=mask)
+
+
+def sharpen_image(image: np.ndarray) -> np.ndarray:
+    """Take an image and sharpen it using a high-pass filter matrix.
+
+    Parameters
+    ----------
+    image
+        An (M, N, 3) array of RGB tuples (the image).
+
+    Returns
+    -------
+    The original imaged sharpened by convolution with a high-pass filter.
+
+    Notes
+    -----
+    I'm not an expert in sharpening, but from what I can find, the matrix
+    described below is a 3x3 sharpening matrix:
+
+    |-----------|
+    |  0  -1  0 |
+    | -1   5 -1 |
+    |  0  -1  0 |
+    |-----------|
+
+    Note that the sum of all matrix elements is 1, so applying this matrix
+    to data won't skew the total values in the array!
+
+    """
+
+    # Make an array of the same shape as the original image with a 1 pixel
+    #  border
+    sharpening_array = np.zeros((image.shape[0] + 2, image.shape[1] + 2, 3))
+
+    # Fill the array
+    sharpening_array[1:-1, 1:-1, :] = image
+    sharpening_array[0, 1:-1, :] = image[0, :, :]
+    sharpening_array[-1, 1:-1, :] = image[-1, :, :]
+    sharpening_array[1:-1, 0, :] = image[:, 0, :]
+    sharpening_array[1:-1, -1, :] = image[:, -1, :]
+
+    # make a copy of the image, which will be modified as it gets sharpened
+    sharpened_image = np.copy(image)
+
+    # multiply each pixel by the sharpening matrix
+    for integration in range(image.shape[0]):
+        for spatial_bin in range(image.shape[1]):
+            for rgb in range(3):
+                # This will work for all non-border pixels
+                try:
+                    sharpened_image[integration, spatial_bin, rgb] = \
+                        5 * sharpening_array[integration + 1, spatial_bin + 1, rgb] - \
+                        sharpening_array[integration, spatial_bin + 1, rgb] - \
+                        sharpening_array[integration + 2, spatial_bin + 1, rgb] - \
+                        sharpening_array[integration + 1, spatial_bin, rgb] - \
+                        sharpening_array[integration + 1, spatial_bin + 2, rgb]
+                # If the pixel is a border pixel, no sharpening necessary
+                except IndexError:
+                    continue
+
+    # Trim the array to be [0, 255]
+    sharpened_image[sharpened_image < 0] = 0
+    sharpened_image[sharpened_image > 255] = 1
+
+    return sharpened_image
