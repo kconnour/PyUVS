@@ -221,4 +221,6 @@ def make_data_file(orbit: int) -> None:
 
 
 if __name__ == '__main__':
-    make_data_file(5726)
+    for o in range(3000, 15000):
+        print(o)
+        make_data_file(o)
