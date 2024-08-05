@@ -34,6 +34,10 @@ def fit_muv_templates_to_nightside_data(hduls: list[hdulist]) -> np.ndarray:
     uncertainty[..., binned_starting_index: binned_starting_index + n_spectral_bins] = random_uncertainty
 
     # Rebin the templates to the data's binning
+    # NOTE: all templates come from theoretical calculations. The NO curve is
+    #  itself an MLR fit of a spectrum to several theoretical curves. I asked
+    #  Zac for the coefficients on each curve, and he said they're about 2/3
+    #  delta and 1/3 gamma, but the exact coefficient have been lost
     p = Path('/mnt/science/mars/missions/maven/instruments/iuvs/spectral_templates')
     templates = np.vstack([
         np.genfromtxt(p / 'co-cameron-bands_calibrated_1024-bins.dat'),
@@ -41,8 +45,7 @@ def fit_muv_templates_to_nightside_data(hduls: list[hdulist]) -> np.ndarray:
         np.genfromtxt(p / 'co2p_fdb_calibrated_1024-bins.dat'),
         np.genfromtxt(p / 'co2p_uvd_calibrated_1024-bins.dat'),
         np.genfromtxt(p / 'n2_vk_calibrated_1024-bins.dat'),
-        np.genfromtxt(p / 'no_nightglow_delta_bands_calibrated_1024-bins.dat') * 2/3 +
-        np.genfromtxt(p / 'no_nightglow_gamma_bands-all_calibrated_1024-bins.dat') * 1/3,
+        np.load(p / 'no_nightglow.npy'),
         np.genfromtxt(p / 'o2972_calibrated_1024-bins.dat'),
         np.genfromtxt(p / 'solar_continuum_calibrated_1024-bins.dat')
         ])
