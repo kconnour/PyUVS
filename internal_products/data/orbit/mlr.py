@@ -37,9 +37,11 @@ def fit_muv_templates_to_nightside_data(hduls: list[hdulist]) -> np.ndarray:
     # NOTE: all templates come from theoretical calculations. The NO curve is
     #  itself an MLR fit of a spectrum to several theoretical curves. I asked
     #  Zac for the coefficients on each curve, and he said they're about 2/3
-    #  delta and 1/3 gamma, but the exact coefficient have been lost
+    #  delta and 1/3 gamma, but the exact coefficient have been lost. The
+    #  constant noise is just 1 / sensitivity curve, normalized.
     p = Path('/mnt/science/mars/missions/maven/instruments/iuvs/spectral_templates')
     templates = np.vstack([
+        np.load(p / 'constant_noise.npy'),
         np.genfromtxt(p / 'co-cameron-bands_calibrated_1024-bins.dat'),
         np.genfromtxt(p / 'cop_1ng_calibrated_1024-bins.dat'),
         np.genfromtxt(p / 'co2p_fdb_calibrated_1024-bins.dat'),
@@ -52,17 +54,16 @@ def fit_muv_templates_to_nightside_data(hduls: list[hdulist]) -> np.ndarray:
 
     reshaped_templates = np.reshape(templates, (templates.shape[0], templates.shape[1]//pixels_per_spectral_bin, pixels_per_spectral_bin))
     binned_templates = np.sum(reshaped_templates, axis=-1).T
-    binned_templates = sm.add_constant(binned_templates)
 
     # Fit templates to the data
-    brightnesses = np.zeros((len(templates) + 1,) + brightness.shape[:-1]) * np.nan   # templates + 1 cause I'm fitting a constant term + each template
+    brightnesses = np.zeros((len(templates),) + brightness.shape[:-1]) * np.nan
     for integration in range(n_integrations):
         for spatial_bin in range(n_spatial_bins):
             fit = sm.WLS(spectra[integration, spatial_bin, :], binned_templates,
                          weights=1 / uncertainty[integration, spatial_bin, :] ** 2,
                          missing='drop').fit()  # This ignores NaNs
             coeff = fit.params
-            for species in range(len(templates) + 1):
+            for species in range(len(templates)):
                 brightnesses[species, integration, spatial_bin] = np.sum(coeff[species] * binned_templates[:, species])
 
     return brightnesses
