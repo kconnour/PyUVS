@@ -12,3 +12,6 @@ orbit_file_path = Path('/media/kyle/iuvs/data')
 
 iuvs_fits_files_location = Path('/mnt/science/mars/missions/maven/instruments/iuvs/production')
 """This is the location of where IUVS .fits files live on this computer."""
+
+iuvs_images_location = Path('/mnt/science/mars/missions/maven/instruments/iuvs/images')
+"""This is the location where IUVS images live on this computer."""
