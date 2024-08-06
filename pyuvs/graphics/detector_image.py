@@ -59,3 +59,34 @@ def make_single_integration_geographic_grid(grid: np.ndarray) -> np.ndarray:
     grid_corners[0, -1] = grid[-1, 2]
     grid_corners[1, -1] = grid[-1, 3]
     return grid_corners
+
+
+def make_swath_geographic_grid(grid: np.ndarray) -> np.ndarray:
+    """The geographic grid for a swath
+
+    Parameters
+    ----------
+    grid
+        The latitude or longitude of the integration
+
+    Returns
+    -------
+    An grid of the corners of the swath.
+
+    Notes
+    -----
+    An integration is not contiguous! In other words, the top of one integration
+    will not be at the same geographic point as the bottom of the next
+    integration. However, it can be close, and this function is a useful
+    approximation for when this is true.
+
+    """
+    n_integrations = grid.shape[0]
+    n_spatial_bin = grid.shape[1]
+    grid_corners = np.zeros((n_integrations + 1, n_spatial_bin + 1)) * np.nan
+
+    grid_corners[:-1, :-1] = grid[..., 0]
+    grid_corners[-1, :-1] = grid[-1, :, 1]
+    grid_corners[:-1, -1] = grid[:, -1, 2]
+    grid_corners[-1, -1] = grid[-1, -1, 3]
+    return grid_corners
