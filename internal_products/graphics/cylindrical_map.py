@@ -5,9 +5,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import pyuvs as pu
+from paths import iuvs_images_location
 
 
-def make_cylindrical_map(orbit: int) -> None:
+def make_apoapse_muv_cylindrical_map(orbit: int) -> None:
     # Load in the relevant data
     file_path = Path('/media/kyle/iuvs/data/')
     orbit_block = pu.make_orbit_block(orbit)
@@ -34,7 +35,7 @@ def make_cylindrical_map(orbit: int) -> None:
         np.any(longitude < 60, axis=-1))
 
     # Setup the figure
-    fig = plt.figure(figsize=(14, 7))
+    fig = plt.figure(figsize=(14, 7), facecolor=(0, 0, 0, 0))
     ax = fig.add_axes([0, 0, 1, 1])
 
     # Plot data, integration by integration. The strategy is to plot all the
@@ -71,9 +72,9 @@ def make_cylindrical_map(orbit: int) -> None:
     ax.set_xticks([])
 
     # Save the graphic
-    save_location = Path('/mnt/science/mars/missions/maven/instruments/iuvs/images/apoapse/muv')
+    save_location = iuvs_images_location / 'apoapse' / 'muv' / 'cylindrical'
     filename = f'{orbit_code}_cylindrical-map.png'
     save = save_location / pu.make_orbit_block(orbit) / filename
     save.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(save, dpi=150, transparent=True)
+    plt.savefig(save, dpi=150)
     plt.close(fig)
