@@ -219,3 +219,103 @@ def sharpen_image(image: np.ndarray) -> np.ndarray:
     sharpened_image[sharpened_image > 255] = 1
 
     return sharpened_image
+
+def square_root_scale_grayscale_image(
+        image: np.ndarray, low_percentile: float = 5, high_percentile: float = 95, mask=None) -> np.ndarray:
+    """Square root scale a grayscale image.
+
+    Parameters
+    ----------
+    image
+        The image to square root scale. This is assumed to be 2-dimensional (2 spatial dimensions) but can have any
+        dimensionality.
+    low_percentile
+        The lowest percentile of brightnesses to include in the coloring.
+    high_percentile
+        The highest percentile of brightnesses to include in the coloring.
+    mask
+        A mask of booleans where :code:`False` values are excluded from the square root scaling. This must
+        have the same shape as :code:`image`.
+
+    Returns
+    -------
+    A square root scaled array with the same shape as the inputs with values ranging from 0 to 255.
+
+    See Also
+    --------
+    square_root_scale_rgb_image: Square root scale a 3-color-channel image.
+
+    """
+    image[image < 0] = 0
+
+    scaled_image = np.sqrt(image[mask])
+    low = np.percentile(scaled_image, low_percentile, axis=None)
+    high = np.percentile(scaled_image, high_percentile, axis=None)
+
+    rgb = np.linspace(0, 255, num=256)
+    dn = np.linspace(low, high, num=256)
+    return np.floor(np.interp(np.sqrt(image), dn, rgb))
+
+
+def square_root_scale_rgb_image(
+        image: np.ndarray, low_percentile: float = 5, high_percentile: float = 95, mask=None) -> np.ndarray:
+    """Square root scale an RGB image.
+
+    Parameters
+    ----------
+    image
+        The image to square root scale. This is assumed to be 3-dimensional (the first 2 being spatial and the last
+        being spectral). The last dimension as assumed to have a length of 3. Indices 0, 1, and 2 correspond to R, G,
+        and B, respectively.
+    low_percentile
+        The lowest percentile of brightnesses to include in the coloring.
+    high_percentile
+        The highest percentile of brightnesses to include in the coloring.
+    mask
+        A mask of booleans where :code:`False` values are excluded from the square root scaling. This must
+        have the same shape as the first N-1 dimensions of :code:`image`.
+
+    Returns
+    -------
+    A square root scaled array with the same shape as the inputs with values ranging from 0 to 255.
+
+    See Also
+    --------
+    square_root_scale_grayscale_image: Square root scale a single-color-channel image.
+
+    """
+    red = square_root_scale_grayscale_image(image[..., 0], low_percentile=low_percentile,
+                                            high_percentile=high_percentile, mask=mask)
+    green = square_root_scale_grayscale_image(image[..., 1], low_percentile=low_percentile,
+                                            high_percentile=high_percentile, mask=mask)
+    blue = square_root_scale_grayscale_image(image[..., 2], low_percentile=low_percentile,
+                                            high_percentile=high_percentile, mask=mask)
+    return np.dstack([red, green, blue])
+
+
+def square_root_scale_detector_image(
+        image: np.ndarray, low_percentile: float = 5, high_percentile: float = 95, mask: np.ndarray=None) -> np.ndarray:
+    """Square root scale a detector image.
+
+    Parameters
+    ----------
+    image
+        The image to square root scale. This is assumed to be 3-dimensional (the first 2 being spatial and the last
+        being spectral).
+    low_percentile
+        The lowest percentile of brightnesses to include in the coloring.
+    high_percentile
+        The highest percentile of brightnesses to include in the coloring.
+    mask
+        A mask of booleans where :code:`False` values are excluded from the square root scaling. This must
+        have the same shape as the first N-1 dimensions of :code:`image`.
+
+    Returns
+    -------
+    Square root scaled IUVS image, where the output array has a shape of (M, N, 3).
+
+    """
+    coadded_image = turn_detector_image_to_3_channels(image)
+    return square_root_scale_rgb_image(coadded_image, low_percentile=low_percentile,
+                                       high_percentile=high_percentile, mask=mask)
+
