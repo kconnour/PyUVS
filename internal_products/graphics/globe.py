@@ -299,7 +299,6 @@ def plot_apoapse_muv_daynight_globe_upright_no_nightglow(orbit: int) -> None:
 
     # If we didn't take dayside data on a given orbit, don't try to make a globe for that orbit.
     if np.sum(dayside_science_integrations) == 0:
-        print('here')
         return
 
     # Load in datasets for the dayside image
@@ -367,7 +366,6 @@ def plot_apoapse_muv_daynight_globe_upright_no_nightglow(orbit: int) -> None:
     pixel_angle = np.arccos(np.dot(nightside_spatial_bin_vector[0, 0, 0, :],
                                    nightside_spatial_bin_vector[0, 0, 1, :]))
     if np.isnan(pixel_angle):
-        print('was nan')
         pixel_angle = np.radians(10 / nightside_spatial_bin_vector.shape[1])  # this is the angular slit width / the number of spatial bins
     pixel_size = 2 * np.tan(pixel_angle) * spacecraft_altitude
 
@@ -385,7 +383,6 @@ def plot_apoapse_muv_daynight_globe_upright_no_nightglow(orbit: int) -> None:
         vx = np.cross([0, 0, 1], norm)
         vx = vx / np.linalg.norm(vx)
         vy = np.cross(norm, vx)
-        print(integration)
         for spatial_bin in range(species_brightness.shape[1]):
             for pixel_corner in range(5):
                 try:
@@ -642,8 +639,8 @@ def plot_apoapse_muv_daynight_globe_rotated_no_nightglow(orbit: int) -> None:
     subspacecraft_latitude = f['apoapse/apsis/subspacecraft_latitude'][0]
     subspacecraft_longitude = f['apoapse/apsis/subspacecraft_longitude'][0]
     spacecraft_altitude = f['apoapse/apsis/spacecraft_altitude'][0]
-    mars_position = f['apoapse/apsis/mars_position'][:]
-    mars_velocity = f['apoapse/apsis/mars_velocity'][:]
+    mars_position = f['apoapse/apsis/mars_position'][0]   # TODO: this should be [:] but I messed up and this array is (1, 3), not (3,)
+    mars_velocity = f['apoapse/apsis/mars_velocity'][0]   # TODO: same as above
 
     # Load in datasets for the nightside image
     species_brightness = f[f'apoapse/muv/nightside/species/no_nightglow'][:]
@@ -717,7 +714,6 @@ def plot_apoapse_muv_daynight_globe_rotated_no_nightglow(orbit: int) -> None:
     for integration in range(species_brightness.shape[0]):
         norm = spacecraft_position[integration] / np.linalg.norm(spacecraft_position[integration])
         vx = np.cross(instrument_y_field_of_view[integration], norm)
-        print(integration)
         for spatial_bin in range(species_brightness.shape[1]):
             for pixel_corner in range(5):
                 try:
@@ -934,9 +930,3 @@ def plot_apoapse_muv_daynight_globe_rotated_aurora(orbit: int) -> None:
     save.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(save, dpi=150)
     plt.close(fig)
-
-
-if __name__ == '__main__':
-    #plot_apoapse_muv_daynight_globe_upright_no_nightglow(5738)
-    #plot_apoapse_muv_daynight_globe_rotated_no_nightglow(5738)
-    plot_apoapsis_topographic_globe_upright(3000)
