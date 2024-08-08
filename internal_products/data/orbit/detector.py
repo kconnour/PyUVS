@@ -62,6 +62,24 @@ def make_systematic_uncertainty(hduls: list[hdulist]) -> np.ndarray:
 
 
 def make_brightness(hduls: list[hdulist]) -> np.ndarray:
+    """Make the brightness [kR] of each observation.
+
+    Parameters
+    ----------
+    hduls
+
+    Returns
+    -------
+
+    Notes
+    -----
+    I reiterate that this returns [kR] and not [kR/nm], which is found in the
+    .fits files. It seems that kR/nm is more common in other datasets but I made
+    this choice because we discovered that the wavelength edges shift around!
+    Therefore, kR is fairly straightforward to compute whereas kR/nm is extremely
+    difficult.
+
+    """
     dark_subtracted = make_detector_dark_subtracted(hduls)
     if not dark_subtracted.shape[0]:
         return np.array([])
