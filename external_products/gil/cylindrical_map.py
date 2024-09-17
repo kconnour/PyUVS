@@ -5,7 +5,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import pyuvs as pu
-from paths import iuvs_images_location
 
 
 def make_apoapse_muv_cylindrical_map(orbit: int) -> None:
@@ -40,6 +39,12 @@ def make_apoapse_muv_cylindrical_map(orbit: int) -> None:
 
     f = File(file_path / orbit_block / f'{orbit_code}.hdf5')
     dayside = f['apoapse/muv/integration/dayside_integrations'][:]
+    dayside_integrations = f['apoapse/muv/integration/dayside_integrations'][:]
+    opportunity_integrations = f['apoapse/integration/opportunity_classification'][:]
+    dayside_science_integrations = np.logical_and(dayside_integrations, ~opportunity_integrations)
+    if np.sum(dayside_science_integrations) == 0:
+        return
+
     opportunity_swaths = f['apoapse/integration/opportunity_classification'][:]
     brightness = f['apoapse/muv/dayside/detector/brightness'][~opportunity_swaths[dayside]]
     tangent_altitude = f['apoapse/muv/dayside/spatial_bin_geometry/tangent_altitude'][:]
@@ -73,6 +78,11 @@ def make_apoapse_muv_cylindrical_map(orbit: int) -> None:
         latitude_grid = pu.graphics.make_single_integration_geographic_grid(latitude[integration])
         longitude_grid = pu.graphics.make_single_integration_geographic_grid(longitude[integration])
 
+        # Account for times when our data have NaNs (which isn't often and idk why they're there in the first place)
+        if np.any(np.isnan(latitude_grid)):
+            plt.close(fig)
+            return
+
         # Plot the non-wrapped pixels
         image = np.copy(colored_data[integration])
         image[wrapped_pixels[integration]] = np.nan
@@ -96,9 +106,18 @@ def make_apoapse_muv_cylindrical_map(orbit: int) -> None:
     ax.set_xticks([])
 
     # Save the graphic
-    save_location = iuvs_images_location / 'apoapse' / 'muv' / 'cylindrical'
+    save_location = Path('/mnt/science/images/gil/cylindrical')
     filename = f'{orbit_code}_cylindrical-map.png'
     save = save_location / pu.make_orbit_block(orbit) / filename
     save.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(save, dpi=300)
     plt.close(fig)
+
+
+if __name__ == '__main__':
+    for orb in range(16400, 17200):
+        print(orb)
+        try:
+            make_apoapse_muv_cylindrical_map(orb)
+        except IndexError:
+            print(f"{orb} failed")

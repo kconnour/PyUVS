@@ -126,8 +126,6 @@ class Ice(Radprop):
 
 
 # Read in radprop
-# I have no f****** clue why I can't call these methods later on. If I define variables here, the multiprocessing
-# works. If not, it breaks when these are called in parallel. It works when called in series
 dust_radprop = Dust()
 dust_particle_sizes = dust_radprop.get_particle_sizes()
 dust_wavelengths = dust_radprop.get_wavelengths()

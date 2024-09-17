@@ -58,6 +58,7 @@ def make_single_integration_geographic_grid(grid: np.ndarray) -> np.ndarray:
     grid_corners[1, :-1] = grid[:, 1]
     grid_corners[0, -1] = grid[-1, 2]
     grid_corners[1, -1] = grid[-1, 3]
+
     return grid_corners
 
 
