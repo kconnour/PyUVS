@@ -319,3 +319,43 @@ def square_root_scale_detector_image(
     return square_root_scale_rgb_image(coadded_image, low_percentile=low_percentile,
                                        high_percentile=high_percentile, mask=mask)
 
+
+def make_image_of_mean_variations(image: np.ndarray) -> np.ndarray:
+    """Make an image of the mean variations along the spectral axis.
+
+    Parameters
+    ----------
+    image
+        The image to make mean variations of
+
+    Returns
+    -------
+    An array of the differences from the mean spectrum of that orbit.
+
+    """
+    spectral_mean = np.nanmean(image, axis=-1)
+    return np.moveaxis(np.moveaxis(image, -1, 0) / spectral_mean, 0, -1)
+
+
+def histogram_equalize_detector_image_variations(image: np.ndarray, mask=None) -> np.ndarray:
+    """Histogram equalize the deviations from the mean spectrum of an orbit.
+    This is the ''color only'' quicklook.
+
+    Parameters
+    ----------
+    image
+        The image to histogram equalize. This is assumed to be 3-dimensional
+        (the first 2 being spatial and the last being spectral).
+    mask
+        A mask of booleans where ``False`` values are excluded from the
+        histogram equalization scaling. This must have the same shape as the
+        first N-1 dimensions of ``image``.
+
+    Returns
+    -------
+    Histogram equalized detector image variations, where the output array has a
+    shape of (M, N, 3).
+
+    """
+    mean_variations = make_image_of_mean_variations(image)
+    return histogram_equalize_detector_image(mean_variations, mask=mask)
