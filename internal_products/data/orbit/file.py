@@ -1,9 +1,12 @@
 """This script will create a data file for each MAVEN orbit, populating it
 with data."""
 from h5py import File
+import sys 
 
 import pyuvs as pu
 from paths import orbit_file_path, iuvs_fits_files_location
+
+sys.path.append('/Users/juce5499/Documents/MAVEN_IUVS_Jay/PyUVS/internal_products/data/orbit')
 import fits
 
 from file import apoapse
@@ -221,6 +224,6 @@ def make_data_file(orbit: int) -> None:
 
 
 if __name__ == '__main__':
-    for o in range(3000, 20000):
+    for o in range(21442, 21900):
         print(o)
         make_data_file(o)

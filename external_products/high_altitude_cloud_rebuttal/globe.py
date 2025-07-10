@@ -1,4 +1,5 @@
 from pathlib import Path
+import sys
 import warnings
 
 from h5py import File
@@ -6,7 +7,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 
+sys.path.append('/Users/juce5499/Documents/MAVEN_IUVS_Jay/PyUVS')
+
 import pyuvs as pu
+from paths import orbit_file_path
 from paths import apsis_file_path
 
 
@@ -50,11 +54,10 @@ def plot_apoapse_muv_dayside_globe_upright(orbit: int) -> None:
 
     """
     # Load in the relevant data
-    file_path = Path('/media/kyle/iuvs/data/')
     orbit_block = pu.make_orbit_block(orbit)
     orbit_code = pu.make_orbit_code(orbit)
 
-    f = File(file_path / orbit_block / f'{orbit_code}.hdf5')
+    f = File(orbit_file_path / orbit_block / f'{orbit_code}.hdf5')
     dayside_integrations = f['apoapse/muv/integration/dayside_integrations'][:]
     opportunity_integrations = f['apoapse/integration/opportunity_classification'][:]
     dayside_science_integrations = np.logical_and(dayside_integrations, ~opportunity_integrations)
@@ -96,6 +99,9 @@ def plot_apoapse_muv_dayside_globe_upright(orbit: int) -> None:
 
     # Colorize the image (turn kR to RGB)
     mask = np.logical_and(tangent_altitude[..., 4] == 0, solar_zenith_angle <= 102)
+    
+    mask = np.logical_and(tangent_altitude[..., 4] == 0, np.logical_and(solar_zenith_angle >= 90, solar_zenith_angle <= 110))
+    
     #mask = np.logical_and(tangent_altitude[..., 4] == 0, solar_zenith_angle >= 90)
     image = pu.graphics.histogram_equalize_detector_image(brightness, mask=mask) / 255
     # Plot the RGB values onto the globe, each swath at a time. I don't do them
@@ -115,17 +121,20 @@ def plot_apoapse_muv_dayside_globe_upright(orbit: int) -> None:
 
 
         axis.contour(longitude[..., -1][swath_indices], latitude[..., -1][swath_indices], solar_zenith_angle[swath_indices], [90, 100],
-                     transform=transform, colors='red', linewidths=0.5, zorder=swath)
+                     transform=transform, colors=[[ 92, 163, 251], [241, 109,  91]], linewidths=0.5, zorder=swath)
 
     filename = f'{orbit_code}_globe_heq'
 
     # Save the graphic
-    save_location = Path('/mnt/science/images/high_altitude_plume_rebuttal')
+    save_location = Path('/Volumes/iuvs_science/images/high_altitude_plume_rebuttal')
     save = save_location / pu.make_orbit_block(orbit) / filename
     save.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(save, dpi=150)
     plt.close(fig)
+    
+    
 
 
 if __name__ == '__main__':
-    plot_apoapse_muv_dayside_globe_upright(8889)
+    for o in range(8870, 9000, 1):
+        plot_apoapse_muv_dayside_globe_upright(o)

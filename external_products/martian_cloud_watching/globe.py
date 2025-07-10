@@ -1,11 +1,13 @@
 from pathlib import Path
 import warnings
+import sys
 
 from h5py import File
 import numpy as np
 import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 
+sys.path.append('/Users/juce5499/Documents/MAVEN_IUVS_Jay/PyUVS')
 import pyuvs as pu
 from _filename import make_filename
 from paths import apsis_file_path
@@ -48,7 +50,7 @@ def plot_apoapsis_topographic_globe_upright(orbit: int) -> None:
 
     """
     # Get the Mars map and info
-    mars_map_file = File('/mnt/science/mars/maps/mars_surface.hdf5')
+    mars_map_file = File('/Volumes/iuvs_science/mars/maps/mars_surface.hdf5')
     mars_map = mars_map_file['map'][:]
     latitude_boundaries = mars_map_file['latitude_boundaries'][:]
     longitude_boundaries = mars_map_file['longitude_boundaries'][:]
@@ -83,7 +85,7 @@ def plot_apoapsis_topographic_globe_upright(orbit: int) -> None:
                     transform=transform, rasterized=True)
 
     # Save the graphic
-    save_location = Path('/mnt/science/images/cloudspotting/globes-geometry')
+    save_location = Path('/Volumes/iuvs_science/images/cloudspotting/globes-geometry')
     orbit_code = pu.make_orbit_code(orbit)
     filename = f'{orbit_code}_geometry-globe.png'
     save = save_location / pu.make_orbit_block(orbit) / filename
@@ -116,7 +118,7 @@ def plot_apoapse_muv_dayside_globe_upright(orbit: int) -> None:
 
     """
     # Load in the relevant data
-    file_path = Path('/media/kyle/iuvs/data/')
+    file_path = Path('/Volumes/iuvs_science/mars/missions/maven/instruments/iuvs/data')
     orbit_block = pu.make_orbit_block(orbit)
     orbit_code = pu.make_orbit_code(orbit)
 
@@ -138,7 +140,7 @@ def plot_apoapse_muv_dayside_globe_upright(orbit: int) -> None:
     subspacecraft_latitude = f['apoapse/apsis/subspacecraft_latitude'][0]
     subspacecraft_longitude = f['apoapse/apsis/subspacecraft_longitude'][0]
     spacecraft_altitude = f['apoapse/apsis/spacecraft_altitude'][0]
-
+    print(solar_zenith_angle.shape)
     # Make a bounding box such that the image represents 8000 km x 8000 km
     rmars = 3400 * 10 ** 3
     image_width = 4000 * 10 ** 3
@@ -146,7 +148,7 @@ def plot_apoapse_muv_dayside_globe_upright(orbit: int) -> None:
     bbox = (corner_pos, corner_pos, 1 - 2 * corner_pos, 1 - 2 * corner_pos)
 
     # Make properties of the image
-    fig = plt.figure(figsize=(7, 7), facecolor=(0, 0, 0, 0))
+    fig = plt.figure(figsize=(7, 7), facecolor='k')
     globe = ccrs.Globe(semimajor_axis=rmars, semiminor_axis=rmars)
     with warnings.catch_warnings(action='ignore', category=UserWarning):
         projection = ccrs.NearsidePerspective(
@@ -158,11 +160,13 @@ def plot_apoapse_muv_dayside_globe_upright(orbit: int) -> None:
     axis = plt.axes(bbox, projection=projection)
 
     # Plot black all over the globe to represent points where no data were taken
-    axis.imshow(checkerboard(), transform=transform, extent=(-180, 180, -90, 90))
+    axis.imshow(checkerboard(), transform=transform, extent=(-180, 180, -90, 90), alpha=1)
 
     # Colorize the image (turn kR to RGB)
     mask = np.logical_and(tangent_altitude[..., 4] == 0, solar_zenith_angle <= 102)
     image = pu.graphics.histogram_equalize_detector_image(brightness, mask=mask) / 255
+
+    
     # Plot the RGB values onto the globe, each swath at a time. I don't do them
     #  all at once, otherwise there would be rogue integrations between the
     #  swath boundaries.
@@ -171,12 +175,22 @@ def plot_apoapse_muv_dayside_globe_upright(orbit: int) -> None:
 
         latitude_grid = pu.graphics.make_swath_geographic_grid(latitude[swath_indices])
         longitude_grid = pu.graphics.make_swath_geographic_grid(longitude[swath_indices])
-
+        #print(solar_zenith_angle[swath_indices].shape)
         swath_image = image[swath_indices]
-
         axis.pcolormesh(longitude_grid, latitude_grid, swath_image,
                         linewidth=0, edgecolors='none', transform=transform,
                         rasterized=True)
+        try: 
+        # place terminator and subsolar longitude on dayside data
+            axis.contour(longitude[..., -1][swath_indices], latitude[..., -1][swath_indices], solar_zenith_angle[swath_indices], [90],
+                     transform=transform, colors='red', linewidths=0.5, zorder=swath, linestyles = '--')
+        except TypeError:
+            continue
+        
+        
+    # place terminator and subsolar longitude on dayside data
+    #axis.contour(solar_zenith_angle, levels=[90], colors='red', linestyles='-', linewidths=3, transform=transform)
+    
 
     # Get info I need for the filename. I'm making a strange filename because someone else requested a specific pattern, but you can call these images whatever you want
     solar_longitude = f['apoapse/apsis/solar_longitude'][:][0]
@@ -189,8 +203,18 @@ def plot_apoapse_muv_dayside_globe_upright(orbit: int) -> None:
         spatial_bin_width, spectral_bin_width, 'heq', 'globe')
 
     # Save the graphic
-    save_location = Path('/mnt/science/images/cloudspotting/globes-heq')
+    save_location = Path('/Volumes/iuvs_science/images/cloudspotting/globes-heq')
     save = save_location / pu.make_orbit_block(orbit) / filename
     save.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(save, dpi=150)
     plt.close(fig)
+    
+    
+    
+if __name__ == '__main__':
+    for o in range(21513, 21600):
+        print(o)
+        #plot_apoapsis_topographic_globe_upright(o)
+        plot_apoapse_muv_dayside_globe_upright(o)
+        
+        

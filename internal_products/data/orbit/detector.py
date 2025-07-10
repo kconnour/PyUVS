@@ -92,7 +92,7 @@ def make_brightness(hduls: list[hdulist]) -> np.ndarray:
     mcp_voltage_gain = make_mcp_voltage_gain(hduls)
 
     def make_muv_flatfield() -> np.ndarray:
-        original_flatfield = np.load('/mnt/science/mars/missions/maven/instruments/iuvs/instrument/muv_flatfield.npy')  # shape: (1024, 1024)
+        original_flatfield = np.load('/Volumes/iuvs_science/mars/missions/maven/instruments/iuvs/instrument/muv_flatfield.npy')  # shape: (1024, 1024)
 
         spatial_bins = spatial_bin_edges.shape[0] - 1
         spectral_bins = spectral_bin_edges.shape[0] - 1
@@ -108,7 +108,7 @@ def make_brightness(hduls: list[hdulist]) -> np.ndarray:
     def make_gain_correction() -> np.ndarray:
         with warnings.catch_warnings():
             warnings.simplefilter('ignore')
-            voltage_file = File('/mnt/science/mars/missions/maven/instruments/iuvs/instrument/voltage.hdf5')
+            voltage_file = File('/Volumes/iuvs_science/mars/missions/maven/instruments/iuvs/instrument/voltage.hdf5')
 
             voltage = voltage_file['voltage'][:]
             fit_coefficients = voltage_file['fit_coefficients'][:]
@@ -129,7 +129,7 @@ def make_brightness(hduls: list[hdulist]) -> np.ndarray:
         flatfield = make_muv_flatfield()
 
         # The sensitivity curve is currently 512 elements. Make it (1024,) for simplicity
-        sensitivity_curve = np.load('/mnt/science/mars/missions/maven/instruments/iuvs/instrument/muv_sensitivity_curve_observational.npy')[1]
+        sensitivity_curve = np.load('/Volumes/iuvs_science/mars/missions/maven/instruments/iuvs/instrument/muv_sensitivity_curve_observational.npy')[1]
         sensitivity_curve = np.repeat(sensitivity_curve, 2)
 
         # Get the sensitivity in each spectral bin

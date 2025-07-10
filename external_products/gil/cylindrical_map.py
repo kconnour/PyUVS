@@ -1,9 +1,10 @@
 from pathlib import Path
-
+import sys
 from h5py import File
 import matplotlib.pyplot as plt
 import numpy as np
 
+sys.path.append('/Users/juce5499/Documents/MAVEN_IUVS_Jay/PyUVS')
 import pyuvs as pu
 
 
@@ -33,7 +34,7 @@ def make_apoapse_muv_cylindrical_map(orbit: int) -> None:
 
     """
     # Load in the relevant data
-    file_path = Path('/media/kyle/iuvs/data/')
+    file_path = Path('/Volumes/iuvs_science/mars/missions/maven/instruments/iuvs/data')
     orbit_block = pu.make_orbit_block(orbit)
     orbit_code = pu.make_orbit_code(orbit)
 
@@ -106,7 +107,7 @@ def make_apoapse_muv_cylindrical_map(orbit: int) -> None:
     ax.set_xticks([])
 
     # Save the graphic
-    save_location = Path('/mnt/science/images/gil/cylindrical')
+    save_location = Path('/Volumes/iuvs_science/images/gil/cylindrical')
     filename = f'{orbit_code}_cylindrical-map.png'
     save = save_location / pu.make_orbit_block(orbit) / filename
     save.parent.mkdir(parents=True, exist_ok=True)
@@ -115,7 +116,7 @@ def make_apoapse_muv_cylindrical_map(orbit: int) -> None:
 
 
 if __name__ == '__main__':
-    for orb in range(16400, 17200):
+    for orb in range(21000, 21100):
         print(orb)
         try:
             make_apoapse_muv_cylindrical_map(orb)

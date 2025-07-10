@@ -39,7 +39,7 @@ def fit_muv_templates_to_nightside_data(hduls: list[hdulist]) -> np.ndarray:
     #  Zac for the coefficients on each curve, and he said they're about 2/3
     #  delta and 1/3 gamma, but the exact coefficient have been lost. The
     #  constant noise is just 1 / sensitivity curve, normalized.
-    p = Path('/mnt/science/mars/missions/maven/instruments/iuvs/spectral_templates')
+    p = Path('/Volumes/iuvs_science/mars/missions/maven/instruments/iuvs/spectral_templates')
     templates = np.vstack([
         np.load(p / 'constant_noise.npy'),
         np.genfromtxt(p / 'co-cameron-bands_calibrated_1024-bins.dat'),

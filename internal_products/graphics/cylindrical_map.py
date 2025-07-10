@@ -1,16 +1,18 @@
 from pathlib import Path
+import sys
 
 from h5py import File
 import matplotlib.pyplot as plt
 import numpy as np
 
+sys.path.append('/Users/juce5499/Documents/MAVEN_IUVS_Jay/PyUVS')
 import pyuvs as pu
 from paths import iuvs_images_location
 
 
 def make_apoapse_muv_cylindrical_map(orbit: int) -> None:
     # Load in the relevant data
-    file_path = Path('/media/kyle/iuvs/data/')
+    file_path = Path('/Volumes/iuvs_science/mars/missions/maven/instruments/iuvs/data')
     orbit_block = pu.make_orbit_block(orbit)
     orbit_code = pu.make_orbit_code(orbit)
 
@@ -76,5 +78,14 @@ def make_apoapse_muv_cylindrical_map(orbit: int) -> None:
     filename = f'{orbit_code}_cylindrical-map.png'
     save = save_location / pu.make_orbit_block(orbit) / filename
     save.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(save, dpi=150)
+    plt.savefig(save, dpi=100)
     plt.close(fig)
+    
+if __name__ == '__main__':
+    for o in range(20100, 20200, 1):
+        try: 
+            print(o)
+            make_apoapse_muv_cylindrical_map(o)
+        except IndexError:
+            print(f"{o} failed")
+

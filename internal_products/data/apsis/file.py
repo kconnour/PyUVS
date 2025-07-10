@@ -4,9 +4,13 @@ from h5py import File
 import mars_time as mt
 import numpy as np
 import spiceypy
+import sys 
 
 from internal_products.data import units
+sys.path.append('/Users/juce5499/Documents/MAVEN_IUVS_Jay/PyUVS')
 import paths
+
+sys.path.append('/Users/juce5499/Documents/MAVEN_IUVS_Jay/PyUVS/internal_products/data/apsis')
 import angle
 import kernels
 import mars_geometry
